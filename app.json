@@ -1,25 +1,51 @@
 {
   "expo": {
-    "name": "budgeting-app",
+    "name": "Receipt Budget",
     "slug": "budgeting-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "receiptbudget",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.receiptbudget.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We use the camera so you can scan receipts and add expenses automatically.",
+        "NSPhotoLibraryUsageDescription": "We access your photos so you can import a receipt image to scan."
+      }
     },
     "android": {
+      "package": "com.receiptbudget.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0E7C66",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Receipt Budget to use the camera to scan receipts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Receipt Budget to access your photos to import receipts."
+        }
+      ],
+      "expo-font"
+    ]
   }
 }
