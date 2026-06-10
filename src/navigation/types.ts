@@ -1,14 +1,24 @@
-import { CategoryId, LineItem, SourceId, WhoId } from '../types';
+import {
+  CategoryId,
+  IncomeCategoryId,
+  LineItem,
+  SourceId,
+  TxType,
+  WhoId,
+} from '../types';
 
 /** Prefill payload passed from the scanner into the add/edit form. */
 export interface TransactionDraft {
   id?: string; // present when editing an existing transaction
+  type?: TxType;
   merchant?: string;
   amount?: number;
   date?: string;
   category?: CategoryId;
+  incomeCategory?: IncomeCategoryId;
   who?: WhoId;
   source?: SourceId;
+  creditCard?: boolean;
   note?: string;
   items?: LineItem[];
   scanned?: boolean;
@@ -24,4 +34,5 @@ export type TabParamList = {
   Dashboard: undefined;
   Transactions: undefined;
   Budgets: undefined;
+  Saldo: undefined;
 };

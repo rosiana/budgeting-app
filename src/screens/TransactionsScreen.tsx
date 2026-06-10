@@ -18,11 +18,11 @@ import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
 import {
   CATEGORIES,
-  categoryOf,
   colors,
   radius,
   sourceOf,
   spacing,
+  txVisual,
   WHO,
   whoOf,
 } from '../theme';
@@ -55,7 +55,11 @@ export default function TransactionsScreen() {
     () =>
       groupByDate(filtered).map((g) => ({
         title: formatDateFriendly(g.date),
-        subtotal: g.items.reduce((s, t) => s + t.amount, 0),
+        // Net for the day: income adds, expense subtracts.
+        subtotal: g.items.reduce(
+          (s, t) => s + (t.type === 'income' ? t.amount : -t.amount),
+          0
+        ),
         data: g.items,
       })),
     [filtered]
@@ -72,12 +76,15 @@ export default function TransactionsScreen() {
     navigation.navigate('AddTransaction', {
       draft: {
         id: tx.id,
+        type: tx.type,
         merchant: tx.merchant,
         amount: tx.amount,
         date: tx.date,
         category: tx.category,
+        incomeCategory: tx.incomeCategory,
         who: tx.who,
         source: tx.source,
+        creditCard: tx.creditCard,
         note: tx.note,
         items: tx.items,
         scanned: tx.scanned,
@@ -158,13 +165,17 @@ export default function TransactionsScreen() {
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionDate}>{section.title}</Text>
-            <Text style={styles.sectionSubtotal}>{formatCurrency(section.subtotal)}</Text>
+            <Text style={styles.sectionSubtotal}>
+              {section.subtotal >= 0 ? '+' : '-'}
+              {formatCurrency(Math.abs(section.subtotal))}
+            </Text>
           </View>
         )}
         renderItem={({ item }) => {
-          const cat = categoryOf(item.category);
+          const vis = txVisual(item);
           const person = whoOf(item.who);
           const src = sourceOf(item.source);
+          const income = item.type === 'income';
           return (
             <TouchableOpacity
               activeOpacity={0.7}
@@ -172,19 +183,28 @@ export default function TransactionsScreen() {
               onLongPress={() => confirmDelete(item)}
               style={styles.row}
             >
-              <IconCircle icon={cat.icon as any} color={cat.color} />
+              <IconCircle icon={vis.icon as any} color={vis.color} />
               <View style={{ flex: 1, marginLeft: spacing.md }}>
                 <View style={styles.rowTop}>
                   <Text style={styles.merchant} numberOfLines={1}>
                     {item.merchant}
                   </Text>
-                  <Text style={styles.amount}>{formatCurrency(item.amount)}</Text>
+                  <Text style={[styles.amount, income && { color: colors.success }]}>
+                    {income ? '+' : ''}
+                    {formatCurrency(item.amount)}
+                  </Text>
                 </View>
                 <View style={styles.rowBottom}>
                   <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
                     <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
                   </View>
                   <Text style={styles.meta}>· {src.label}</Text>
+                  {item.creditCard ? (
+                    <View style={styles.ccBadge}>
+                      <Ionicons name="card" size={10} color={colors.primary} />
+                      <Text style={styles.ccBadgeText}>KK</Text>
+                    </View>
+                  ) : null}
                   {item.items && item.items.length ? (
                     <Text style={styles.meta}>· {item.items.length} item</Text>
                   ) : null}
@@ -252,6 +272,16 @@ const styles = StyleSheet.create({
   whoTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
   whoTagText: { fontSize: 11, fontWeight: '700' },
   meta: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  ccBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.sm,
+  },
+  ccBadgeText: { fontSize: 10, fontWeight: '800', color: colors.primary },
   fab: {
     position: 'absolute',
     right: spacing.lg,

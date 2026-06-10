@@ -22,12 +22,20 @@ import {
   categoryOf,
   colors,
   fill,
+  INCOME_CATEGORIES,
   radius,
   SOURCES,
   spacing,
   WHO,
 } from '../theme';
-import { CategoryId, LineItem, SourceId, WhoId } from '../types';
+import {
+  CategoryId,
+  IncomeCategoryId,
+  LineItem,
+  SourceId,
+  TxType,
+  WhoId,
+} from '../types';
 import { formatCurrency, todayISO } from '../utils/format';
 import { uid } from '../utils/id';
 
@@ -58,13 +66,19 @@ export default function AddTransactionScreen() {
   const draft = route.params?.draft;
   const isEdit = !!draft?.id;
 
+  const [type, setType] = useState<TxType>(draft?.type ?? 'expense');
   const [merchant, setMerchant] = useState(draft?.merchant ?? '');
   const [amount, setAmount] = useState(draft?.amount != null ? String(Math.round(draft.amount)) : '');
   const [date, setDate] = useState(draft?.date ?? todayISO());
   const [category, setCategory] = useState<CategoryId>(draft?.category ?? 'lainnya');
+  const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryId>(
+    draft?.incomeCategory ?? 'gaji'
+  );
   const [who, setWho] = useState<WhoId>(draft?.who ?? DEFAULT_WHO);
   const [source, setSource] = useState<SourceId>(draft?.source ?? 'bca');
+  const [creditCard, setCreditCard] = useState<boolean>(draft?.creditCard ?? false);
   const [note, setNote] = useState(draft?.note ?? '');
+  const isIncome = type === 'income';
   const [items, setItems] = useState<EditableItem[]>(
     (draft?.items ?? []).map((it) => ({
       id: uid(),
@@ -100,14 +114,17 @@ export default function AddTransactionScreen() {
         category: it.category,
       }));
     const base = {
+      type,
       merchant: merchant.trim(),
       amount: Math.round(amountValue),
       date,
       category,
+      incomeCategory: isIncome ? incomeCategory : undefined,
       who,
       source,
+      creditCard: !isIncome && creditCard ? true : undefined,
       note: note.trim() || undefined,
-      items: cleanedItems.length ? cleanedItems : undefined,
+      items: !isIncome && cleanedItems.length ? cleanedItems : undefined,
       scanned: draft?.scanned,
     };
     if (isEdit && draft?.id) {
@@ -149,6 +166,30 @@ export default function AddTransactionScreen() {
           </View>
         ) : null}
 
+        {/* Expense / Income toggle */}
+        <View style={styles.typeToggle}>
+          {(['expense', 'income'] as TxType[]).map((t) => {
+            const active = type === t;
+            const tint = t === 'income' ? colors.success : colors.danger;
+            return (
+              <TouchableOpacity
+                key={t}
+                onPress={() => setType(t)}
+                style={[styles.typeBtn, active && { backgroundColor: colors.card }]}
+              >
+                <Ionicons
+                  name={t === 'income' ? 'arrow-down-circle' : 'arrow-up-circle'}
+                  size={18}
+                  color={active ? tint : colors.textMuted}
+                />
+                <Text style={[styles.typeText, active && { color: tint }]}>
+                  {t === 'income' ? 'Pemasukan' : 'Pengeluaran'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Amount */}
         <Text style={styles.label}>Jumlah</Text>
         <View style={styles.amountRow}>
@@ -159,16 +200,16 @@ export default function AddTransactionScreen() {
             keyboardType="number-pad"
             placeholder="0"
             placeholderTextColor={colors.textMuted}
-            style={styles.amountInput}
+            style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
           />
         </View>
 
-        {/* Merchant */}
-        <Text style={styles.label}>Toko / Keterangan</Text>
+        {/* Merchant / source label */}
+        <Text style={styles.label}>{isIncome ? 'Sumber / Keterangan' : 'Toko / Keterangan'}</Text>
         <TextInput
           value={merchant}
           onChangeText={setMerchant}
-          placeholder="mis. Superindo"
+          placeholder={isIncome ? 'mis. Gaji Rizal' : 'mis. Superindo'}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
@@ -224,24 +265,65 @@ export default function AddTransactionScreen() {
 
         {/* Category */}
         <Text style={styles.label}>Kategori</Text>
-        <View style={styles.chipWrap}>
-          {CATEGORIES.map((c) => {
-            const active = category === c.id;
-            return (
-              <TouchableOpacity
-                key={c.id}
-                activeOpacity={0.8}
-                onPress={() => setCategory(c.id)}
-                style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-              >
-                <Ionicons name={c.icon as any} size={14} color={c.color} />
-                <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {isIncome ? (
+          <View style={styles.chipWrap}>
+            {INCOME_CATEGORIES.map((c) => {
+              const active = incomeCategory === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  activeOpacity={0.8}
+                  onPress={() => setIncomeCategory(c.id)}
+                  style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                >
+                  <Ionicons name={c.icon as any} size={14} color={c.color} />
+                  <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.chipWrap}>
+            {CATEGORIES.map((c) => {
+              const active = category === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  activeOpacity={0.8}
+                  onPress={() => setCategory(c.id)}
+                  style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                >
+                  <Ionicons name={c.icon as any} size={14} color={c.color} />
+                  <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
-        {/* Per-item breakdown with per-item categories */}
+        {/* Credit-card flag (expense only) */}
+        {!isIncome ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setCreditCard((v) => !v)}
+            style={[styles.ccRow, creditCard && styles.ccRowOn]}
+          >
+            <Ionicons name="card" size={18} color={creditCard ? colors.primary : colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.ccTitle, creditCard && { color: colors.primary }]}>Bayar pakai Kartu Kredit</Text>
+              <Text style={styles.ccSub}>
+                Tidak memotong saldo sekarang — ditagih saat jatuh tempo.
+              </Text>
+            </View>
+            <View style={[styles.switchTrack, creditCard && styles.switchTrackOn]}>
+              <View style={[styles.switchThumb, creditCard && styles.switchThumbOn]} />
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Per-item breakdown with per-item categories (expense only) */}
+        {!isIncome ? (
+        <>
         <View style={styles.itemsHeader}>
           <Text style={[styles.label, { marginTop: 0 }]}>Rincian Item</Text>
           <TouchableOpacity onPress={addItem} style={styles.addItemBtn}>
@@ -304,6 +386,8 @@ export default function AddTransactionScreen() {
               ? `  •  beda ${formatCurrency(Math.abs(amountValue - itemsSum))} dari jumlah`
               : ''}
           </Text>
+        ) : null}
+        </>
         ) : null}
 
         {/* Note */}
@@ -382,6 +466,47 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   scanBannerText: { flex: 1, color: colors.primaryDark, fontSize: 13, fontWeight: '600' },
+  typeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.border,
+    borderRadius: radius.pill,
+    padding: 3,
+  },
+  typeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: radius.pill,
+  },
+  typeText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  ccRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  ccRowOn: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  ccTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  ccSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  switchTrack: {
+    width: 46,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+    padding: 3,
+    justifyContent: 'center',
+  },
+  switchTrackOn: { backgroundColor: colors.primary },
+  switchThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white },
+  switchThumbOn: { alignSelf: 'flex-end' },
   label: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginBottom: 6, marginTop: spacing.lg },
   amountRow: {
     flexDirection: 'row',

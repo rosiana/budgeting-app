@@ -1,8 +1,11 @@
 import {
   Category,
   CategoryId,
+  IncomeCategory,
+  IncomeCategoryId,
   Source,
   SourceId,
+  Transaction,
   Who,
   WhoId,
 } from './types';
@@ -74,6 +77,33 @@ export function categoryOf(id: CategoryId): Category {
   return CATEGORY_MAP[id] ?? CATEGORY_MAP.lainnya;
 }
 
+export const INCOME_CATEGORIES: IncomeCategory[] = [
+  { id: 'gaji', label: 'Gaji', icon: 'cash', color: '#2E9E5B' },
+  { id: 'bonus', label: 'Bonus', icon: 'gift', color: '#F4A259' },
+  { id: 'investasi', label: 'Untung Investasi', icon: 'trending-up', color: '#19B6A7' },
+  { id: 'jualan', label: 'Jualan', icon: 'pricetag', color: '#4C8BF5' },
+  { id: 'bunga', label: 'Bunga', icon: 'add-circle', color: '#7A6BF5' },
+  { id: 'transfer_in', label: 'Transfer Masuk', icon: 'swap-horizontal', color: '#5AA469' },
+  { id: 'lainnya_in', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
+];
+
+export const INCOME_CATEGORY_MAP: Record<IncomeCategoryId, IncomeCategory> =
+  INCOME_CATEGORIES.reduce((acc, c) => {
+    acc[c.id] = c;
+    return acc;
+  }, {} as Record<IncomeCategoryId, IncomeCategory>);
+
+export function incomeCategoryOf(id: IncomeCategoryId): IncomeCategory {
+  return INCOME_CATEGORY_MAP[id] ?? INCOME_CATEGORY_MAP.lainnya_in;
+}
+
+/** Default credit-card billing config (BCA-style: cutoff ~12, due 27). */
+export const DEFAULT_CREDIT_CARD = {
+  statementDay: 12,
+  dueDay: 27,
+  paymentSource: 'bca' as SourceId,
+};
+
 export const WHO: Who[] = [
   { id: 'rosi', label: 'Rosi', color: '#B65BC9' },
   { id: 'rizal', label: 'Rizal', color: '#4C8BF5' },
@@ -114,4 +144,14 @@ export const SOURCE_MAP: Record<SourceId, Source> = SOURCES.reduce(
 
 export function sourceOf(id: SourceId): Source {
   return SOURCE_MAP[id] ?? SOURCE_MAP.tunai;
+}
+
+/** Display icon/label/color for any transaction, income or expense. */
+export function txVisual(tx: Transaction): { label: string; icon: string; color: string } {
+  if (tx.type === 'income') {
+    const c = incomeCategoryOf(tx.incomeCategory ?? 'lainnya_in');
+    return { label: c.label, icon: c.icon, color: c.color };
+  }
+  const c = categoryOf(tx.category);
+  return { label: c.label, icon: c.icon, color: c.color };
 }

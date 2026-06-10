@@ -26,8 +26,34 @@ leaves your phone. The data model mirrors the couple's cashflow spreadsheet.
   tap to edit, long-press to delete.
 - 💰 **Anggaran** — per-category monthly limits (Rp) with progress bars and
   over-budget warnings; tap a category to adjust its limit.
+- 💵 **Pemasukan (Income)** — toggle a transaction to income with the
+  spreadsheet's income categories (Gaji, Bonus, Untung Investasi, Jualan, Bunga,
+  Transfer Masuk, Lainnya). Income adds to a balance and is excluded from
+  spending/budget totals; the dashboard shows income vs. expense vs. net.
+- 🏦 **Saldo (Balances)** — a tab showing the running balance of every source
+  (opening balance + income − cash expenses − settled CC bills). Tap a source to
+  set its opening balance.
+- 💳 **Kartu Kredit** — flag an expense as credit-card. It still counts as
+  spending but does **not** reduce a cash balance when entered; it accumulates
+  into the CC bill and is deducted from the configured pay-from account
+  (default BCA) once its due date passes. BCA-style cutoff/due dates are
+  configurable on the Saldo tab.
 - 💾 **Offline & private** — all data stored locally via AsyncStorage, seeded
   with Indonesian sample data on first launch.
+
+### Credit-card billing (gaya BCA)
+
+Each card has a **statement cutoff** (*tanggal cetak*, default day 12) and a
+**due date** (*tanggal jatuh tempo*, default day 27). Purchases are grouped by
+the cutoff, not the due date:
+
+- Buy on/before the cutoff → on this month's statement → due this month's due day.
+- Buy after the cutoff → rolls to next month's statement → due next month.
+
+So with cutoff 12 / due 27: a purchase on Jun 5–12 is due **Jun 27**; Jun 13+ is
+due **Jul 27**. A CC purchase only reduces the pay-from balance once its due date
+is on/before today. All three settings (cutoff, due day, pay-from account) are
+editable on the **Saldo** tab.
 
 ### Categories (Kategori)
 
@@ -57,12 +83,16 @@ src/
     recognize.ts      # runs ML Kit text recognition, then parseReceipt
   store/
     BudgetContext.tsx # state + AsyncStorage persistence
-    selectors.ts      # derived data (monthly totals, by-category, daily series)
-    seed.ts           # default budgets + sample transactions
-  screens/            # Dashboard, Transactions, Budgets, AddTransaction, ScanReceipt
+    selectors.ts      # derived data: spend/income by category, balances, CC status
+    seed.ts           # default budgets, opening balances, CC config, samples
+  utils/
+    cc.ts             # BCA-style credit-card due-date / settlement logic
+    format.ts         # Rupiah + Indonesian date formatting
+  screens/            # Dashboard, Transactions, Budgets, Balances (Saldo),
+                      # AddTransaction, ScanReceipt
   components/          # ui primitives + svg charts
   navigation/          # tab + stack navigators and route types
-  theme.ts            # colors, spacing, categories
+  theme.ts            # colors, spacing, categories, income categories, who, sources
 ```
 
 ## Running the app
@@ -127,5 +157,6 @@ The parser is deliberately forgiving — OCR is noisy — and everything is edit
   tested in the RN directory; it works through the interop layer in practice.
   If you hit issues, set `"newArchEnabled": false` via an
   `expo-build-properties` plugin config.
-- Possible follow-ups: native date picker, multi-currency, recurring expenses,
-  CSV export, cloud sync/accounts, and editable scanned line items.
+- Possible follow-ups: native date picker, recurring expenses, transfers between
+  accounts, CSV/spreadsheet export back to the cashflow format, and cloud
+  sync/accounts.

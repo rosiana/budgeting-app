@@ -6,6 +6,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
+import BalancesScreen from '../screens/BalancesScreen';
 import BudgetsScreen from '../screens/BudgetsScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ScanReceiptScreen from '../screens/ScanReceiptScreen';
@@ -20,6 +21,7 @@ const ICONS: Record<keyof TabParamList, keyof typeof Ionicons.glyphMap> = {
   Dashboard: 'pie-chart',
   Transactions: 'list',
   Budgets: 'wallet',
+  Saldo: 'cash',
 };
 
 function Tabs() {
@@ -53,6 +55,7 @@ function Tabs() {
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Ringkasan' }} />
       <Tab.Screen name="Transactions" component={TransactionsScreen} options={{ title: 'Transaksi' }} />
       <Tab.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Anggaran' }} />
+      <Tab.Screen name="Saldo" component={BalancesScreen} options={{ title: 'Saldo' }} />
     </Tab.Navigator>
   );
 }

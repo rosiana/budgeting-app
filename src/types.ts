@@ -13,6 +13,18 @@ export type CategoryId =
   | 'rumah' // Kebutuhan Rumah (household needs)
   | 'lainnya'; // Lainnya (others)
 
+// Income categories, from the cashflow spreadsheet.
+export type IncomeCategoryId =
+  | 'gaji' // Salary
+  | 'bonus' // Bonus
+  | 'investasi' // Investment Profit
+  | 'jualan' // Selling
+  | 'bunga' // Interest (+)
+  | 'transfer_in' // Transfer (+)
+  | 'lainnya_in'; // Others (+)
+
+export type TxType = 'expense' | 'income';
+
 // Who the expense was for.
 export type WhoId = 'rosi' | 'rizal' | 'nonik' | 'rumah' | 'lainnya';
 
@@ -33,6 +45,13 @@ export interface Category {
   id: CategoryId;
   label: string;
   icon: string; // Ionicons name
+  color: string;
+}
+
+export interface IncomeCategory {
+  id: IncomeCategoryId;
+  label: string;
+  icon: string;
   color: string;
 }
 
@@ -58,14 +77,22 @@ export interface LineItem {
 
 export interface Transaction {
   id: string;
+  type: TxType;
   /** ISO date string (yyyy-mm-dd) */
   date: string;
   merchant: string;
   amount: number;
-  /** Primary category (fallback when there are no per-item categories). */
+  /** Expense category (used when type === 'expense'; fallback for items). */
   category: CategoryId;
+  /** Income category (used when type === 'income'). */
+  incomeCategory?: IncomeCategoryId;
   who: WhoId;
   source: SourceId;
+  /**
+   * Expense paid by credit card. CC expenses still count as spending but do
+   * not reduce a cash balance until their billing cycle's due date passes.
+   */
+  creditCard?: boolean;
   note?: string;
   items?: LineItem[];
   /** Set when the transaction was created from a scanned receipt */
@@ -76,9 +103,22 @@ export interface Transaction {
 /** Per-category monthly spending limit, keyed by CategoryId. */
 export type Budgets = Record<CategoryId, number>;
 
+/** Credit-card billing configuration (BCA-style cutoff + due date). */
+export interface CreditCardConfig {
+  /** Statement cutoff day of month (tanggal cetak). */
+  statementDay: number;
+  /** Payment due day of month (tanggal jatuh tempo). */
+  dueDay: number;
+  /** Account the settled CC bill is deducted from. */
+  paymentSource: SourceId;
+}
+
 export interface AppData {
   transactions: Transaction[];
   budgets: Budgets;
+  /** Starting balance per money source. */
+  openingBalances: Partial<Record<SourceId, number>>;
+  creditCard: CreditCardConfig;
 }
 
 /** Structured result produced by the receipt parser from raw OCR text. */

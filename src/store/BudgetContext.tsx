@@ -6,20 +6,35 @@ import React, {
   useMemo,
   useReducer,
 } from 'react';
-import { AppData, Budgets, CategoryId, Transaction } from '../types';
+import { DEFAULT_CREDIT_CARD } from '../theme';
+import {
+  AppData,
+  Budgets,
+  CategoryId,
+  CreditCardConfig,
+  SourceId,
+  Transaction,
+} from '../types';
 import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
 
-const STORAGE_KEY = 'receipt-budget:data:v2';
+const STORAGE_KEY = 'receipt-budget:data:v3';
 
 type Action =
   | { type: 'hydrate'; data: AppData }
   | { type: 'addTransaction'; tx: Transaction }
   | { type: 'updateTransaction'; tx: Transaction }
   | { type: 'deleteTransaction'; id: string }
-  | { type: 'setBudget'; category: CategoryId; amount: number };
+  | { type: 'setBudget'; category: CategoryId; amount: number }
+  | { type: 'setOpeningBalance'; source: SourceId; amount: number }
+  | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> };
 
-const EMPTY: AppData = { transactions: [], budgets: DEFAULT_BUDGETS };
+const EMPTY: AppData = {
+  transactions: [],
+  budgets: DEFAULT_BUDGETS,
+  openingBalances: {},
+  creditCard: DEFAULT_CREDIT_CARD,
+};
 
 function reducer(state: AppData, action: Action): AppData {
   switch (action.type) {
@@ -44,6 +59,13 @@ function reducer(state: AppData, action: Action): AppData {
         ...state,
         budgets: { ...state.budgets, [action.category]: action.amount },
       };
+    case 'setOpeningBalance':
+      return {
+        ...state,
+        openingBalances: { ...state.openingBalances, [action.source]: action.amount },
+      };
+    case 'setCreditCard':
+      return { ...state, creditCard: { ...state.creditCard, ...action.patch } };
     default:
       return state;
   }
@@ -53,10 +75,14 @@ interface BudgetContextValue {
   ready: boolean;
   transactions: Transaction[];
   budgets: Budgets;
+  openingBalances: Partial<Record<SourceId, number>>;
+  creditCard: CreditCardConfig;
   addTransaction: (input: NewTransaction) => Transaction;
   updateTransaction: (tx: Transaction) => void;
   deleteTransaction: (id: string) => void;
   setBudget: (category: CategoryId, amount: number) => void;
+  setOpeningBalance: (source: SourceId, amount: number) => void;
+  setCreditCard: (patch: Partial<CreditCardConfig>) => void;
 }
 
 export type NewTransaction = Omit<Transaction, 'id' | 'createdAt'>;
@@ -75,10 +101,15 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (cancelled) return;
         if (raw) {
-          const parsed = JSON.parse(raw) as AppData;
+          const parsed = JSON.parse(raw) as Partial<AppData>;
           dispatch({
             type: 'hydrate',
-            data: { budgets: { ...DEFAULT_BUDGETS, ...parsed.budgets }, transactions: parsed.transactions ?? [] },
+            data: {
+              budgets: { ...DEFAULT_BUDGETS, ...parsed.budgets },
+              transactions: parsed.transactions ?? [],
+              openingBalances: parsed.openingBalances ?? {},
+              creditCard: { ...DEFAULT_CREDIT_CARD, ...parsed.creditCard },
+            },
           });
         } else {
           dispatch({ type: 'hydrate', data: SEED_DATA });
@@ -108,6 +139,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       ready,
       transactions: state.transactions,
       budgets: state.budgets,
+      openingBalances: state.openingBalances,
+      creditCard: state.creditCard,
       addTransaction: (input) => {
         const tx: Transaction = { ...input, id: uid(), createdAt: Date.now() };
         dispatch({ type: 'addTransaction', tx });
@@ -115,8 +148,10 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       },
       updateTransaction: (tx) => dispatch({ type: 'updateTransaction', tx }),
       deleteTransaction: (id) => dispatch({ type: 'deleteTransaction', id }),
-      setBudget: (category, amount) =>
-        dispatch({ type: 'setBudget', category, amount }),
+      setBudget: (category, amount) => dispatch({ type: 'setBudget', category, amount }),
+      setOpeningBalance: (source, amount) =>
+        dispatch({ type: 'setOpeningBalance', source, amount }),
+      setCreditCard: (patch) => dispatch({ type: 'setCreditCard', patch }),
     }),
     [ready, state]
   );

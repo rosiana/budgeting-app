@@ -15,9 +15,11 @@ import { Card, ProgressBar, SectionTitle } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
+  creditCardStatus,
   dailySpend,
   spendByCategory,
   spendByWho,
+  totalIncome,
   totalSpent,
   txForMonth,
 } from '../store/selectors';
@@ -25,6 +27,7 @@ import { categoryOf, colors, radius, spacing, whoOf } from '../theme';
 import {
   currentMonthKey,
   formatCurrency,
+  formatDateShort,
   formatMonth,
 } from '../utils/format';
 
@@ -33,7 +36,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, budgets } = useBudget();
+  const { transactions, budgets, creditCard } = useBudget();
 
   const mKey = currentMonthKey();
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
@@ -44,6 +47,9 @@ export default function DashboardScreen() {
   );
   const byCat = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
   const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
+  const income = useMemo(() => totalIncome(monthTx), [monthTx]);
+  const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
+  const net = income - spent;
   const week = useMemo(() => dailySpend(transactions, 7), [transactions]);
   const weekTotal = week.reduce((s, d) => s + d.value, 0);
   const remaining = totalBudget - spent;
@@ -94,6 +100,46 @@ export default function DashboardScreen() {
             </Text>
           </View>
         </Card>
+
+        {/* Cashflow: income vs expense vs net */}
+        <View style={styles.cashflowRow}>
+          <Card style={styles.cashflowCard}>
+            <View style={styles.cashflowTop}>
+              <Ionicons name="arrow-down-circle" size={16} color={colors.success} />
+              <Text style={styles.cashflowLabel}>Pemasukan</Text>
+            </View>
+            <Text style={[styles.cashflowValue, { color: colors.success }]}>{formatCurrency(income)}</Text>
+          </Card>
+          <Card style={styles.cashflowCard}>
+            <View style={styles.cashflowTop}>
+              <Ionicons name="swap-vertical" size={16} color={net >= 0 ? colors.primary : colors.danger} />
+              <Text style={styles.cashflowLabel}>Selisih</Text>
+            </View>
+            <Text style={[styles.cashflowValue, { color: net >= 0 ? colors.primary : colors.danger }]}>
+              {net >= 0 ? '' : '-'}{formatCurrency(Math.abs(net))}
+            </Text>
+          </Card>
+        </View>
+
+        {/* Credit card bill */}
+        {cc.outstanding > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Tabs', { screen: 'Saldo' } as any)}
+            style={styles.ccCard}
+          >
+            <View style={styles.ccIcon}>
+              <Ionicons name="card" size={20} color={colors.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ccLabel}>Tagihan Kartu Kredit</Text>
+              <Text style={styles.ccDue}>
+                {formatCurrency(cc.dueNext)} jatuh tempo {formatDateShort(cc.nextDue)}
+              </Text>
+            </View>
+            <Text style={styles.ccAmount}>{formatCurrency(cc.outstanding)}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Quick actions */}
         <View style={styles.actions}>
@@ -240,6 +286,33 @@ const styles = StyleSheet.create({
   summaryValue: { color: colors.white, fontSize: 30, fontWeight: '800', marginTop: 2 },
   summaryValueSm: { fontSize: 20, fontWeight: '800', marginTop: 2 },
   budgetCaption: { color: '#D9EEE8', fontSize: 12, marginTop: 6 },
+  cashflowRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  cashflowCard: { flex: 1, padding: spacing.md },
+  cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cashflowLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
+  cashflowValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  ccCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  ccIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ccLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  ccDue: { fontSize: 12, color: colors.textMuted, marginTop: 1, fontWeight: '600' },
+  ccAmount: { fontSize: 16, fontWeight: '800', color: colors.primary },
   actions: { flexDirection: 'row', gap: spacing.md, marginVertical: spacing.xl },
   action: {
     flex: 1,
