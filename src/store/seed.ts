@@ -27,6 +27,8 @@ export const DEFAULT_OPENING_BALANCES: Partial<Record<SourceId, number>> = {
   bni: 1_000_000,
   ovo: 250_000,
   shopeepay: 150_000,
+  gopay: 200_000,
+  emas: 7_500_000,
   tunai: 500_000,
 };
 

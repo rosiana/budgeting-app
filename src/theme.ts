@@ -129,8 +129,10 @@ export const SOURCES: Source[] = [
   { id: 'bni', label: 'BNI', icon: 'card', color: '#E97A1A' },
   { id: 'ovo', label: 'OVO', icon: 'phone-portrait', color: '#4B2A8A' },
   { id: 'shopeepay', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D' },
+  { id: 'gopay', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2' },
   { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F' },
   { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6' },
+  { id: 'emas', label: 'Emas', icon: 'diamond', color: '#D4A017' },
   { id: 'tunai', label: 'Tunai', icon: 'cash', color: '#2E9E5B' },
 ];
 

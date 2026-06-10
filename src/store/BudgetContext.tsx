@@ -7,6 +7,7 @@ import React, {
   useReducer,
 } from 'react';
 import { DEFAULT_CREDIT_CARD } from '../theme';
+import { SyncConfig, SyncData } from '../sync/sheets';
 import {
   AppData,
   Budgets,
@@ -19,6 +20,7 @@ import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
 
 const STORAGE_KEY = 'receipt-budget:data:v3';
+const SYNC_KEY = 'receipt-budget:sync:v1';
 
 type Action =
   | { type: 'hydrate'; data: AppData }
@@ -27,7 +29,8 @@ type Action =
   | { type: 'deleteTransaction'; id: string }
   | { type: 'setBudget'; category: CategoryId; amount: number }
   | { type: 'setOpeningBalance'; source: SourceId; amount: number }
-  | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> };
+  | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> }
+  | { type: 'replaceData'; data: SyncData };
 
 const EMPTY: AppData = {
   transactions: [],
@@ -66,6 +69,13 @@ function reducer(state: AppData, action: Action): AppData {
       };
     case 'setCreditCard':
       return { ...state, creditCard: { ...state.creditCard, ...action.patch } };
+    case 'replaceData':
+      return {
+        transactions: action.data.transactions,
+        budgets: { ...DEFAULT_BUDGETS, ...action.data.budgets },
+        openingBalances: action.data.openingBalances ?? {},
+        creditCard: { ...DEFAULT_CREDIT_CARD, ...action.data.creditCard },
+      };
     default:
       return state;
   }
@@ -83,15 +93,41 @@ interface BudgetContextValue {
   setBudget: (category: CategoryId, amount: number) => void;
   setOpeningBalance: (source: SourceId, amount: number) => void;
   setCreditCard: (patch: Partial<CreditCardConfig>) => void;
+  /** Snapshot of the data mirrored to the spreadsheet. */
+  syncData: SyncData;
+  syncConfig: SyncConfig;
+  setSyncConfig: (patch: Partial<SyncConfig>) => void;
+  /** Replace all local data (used after pulling from the Sheet). */
+  replaceData: (data: SyncData) => void;
 }
 
 export type NewTransaction = Omit<Transaction, 'id' | 'createdAt'>;
 
 const BudgetContext = createContext<BudgetContextValue | undefined>(undefined);
 
+const EMPTY_SYNC: SyncConfig = { url: '', token: '' };
+
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, EMPTY);
   const [ready, setReady] = React.useState(false);
+  const [syncConfig, setSyncConfigState] = React.useState<SyncConfig>(EMPTY_SYNC);
+
+  // Load the sync config (kept separate from synced data — it holds a secret).
+  useEffect(() => {
+    AsyncStorage.getItem(SYNC_KEY)
+      .then((raw) => {
+        if (raw) setSyncConfigState({ ...EMPTY_SYNC, ...JSON.parse(raw) });
+      })
+      .catch(() => {});
+  }, []);
+
+  const setSyncConfig = React.useCallback((patch: Partial<SyncConfig>) => {
+    setSyncConfigState((prev) => {
+      const next = { ...prev, ...patch };
+      AsyncStorage.setItem(SYNC_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
 
   // Hydrate from disk on mount, seeding on first run.
   useEffect(() => {
@@ -152,8 +188,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       setOpeningBalance: (source, amount) =>
         dispatch({ type: 'setOpeningBalance', source, amount }),
       setCreditCard: (patch) => dispatch({ type: 'setCreditCard', patch }),
+      syncData: {
+        transactions: state.transactions,
+        budgets: state.budgets,
+        openingBalances: state.openingBalances,
+        creditCard: state.creditCard,
+      },
+      syncConfig,
+      setSyncConfig,
+      replaceData: (data) => dispatch({ type: 'replaceData', data }),
     }),
-    [ready, state]
+    [ready, state, syncConfig, setSyncConfig]
   );
 
   return (

@@ -19,7 +19,11 @@ leaves your phone. The data model mirrors the couple's cashflow spreadsheet.
   Lainnya**. The default follows the device: **Android → Rizal, iOS → Rosi**, and
   it's always editable.
 - 💳 **Sumber dana (Source)** — BCA, SeaBank, BSI, Mandiri, BNI, OVO, ShopeePay,
-  Bibit, Ajaib, Tunai.
+  GoPay, Bibit, Ajaib, Emas, Tunai.
+- ☁️ **Sinkron Google Sheet** — push all data to a Google Spreadsheet you own
+  (the app stays the source of truth) via a small Apps Script Web App. The Sheet
+  becomes a live, pivot-able mirror; you can also pull it back to restore or set
+  up a new device. See [Google Sheet sync](#google-sheet-sync).
 - 📊 **Ringkasan** — monthly spend vs. budget, a 7-day trend (bar chart), a
   category-breakdown donut, and a **per-person** breakdown.
 - 🧾 **Transaksi** — grouped-by-day list filterable by **Kategori** or **Orang**;
@@ -85,6 +89,8 @@ src/
     BudgetContext.tsx # state + AsyncStorage persistence
     selectors.ts      # derived data: spend/income by category, balances, CC status
     seed.ts           # default budgets, opening balances, CC config, samples
+  sync/
+    sheets.ts         # push/pull the dataset to a Google Sheet (Apps Script)
   utils/
     cc.ts             # BCA-style credit-card due-date / settlement logic
     format.ts         # Rupiah + Indonesian date formatting
@@ -93,7 +99,43 @@ src/
   components/          # ui primitives + svg charts
   navigation/          # tab + stack navigators and route types
   theme.ts            # colors, spacing, categories, income categories, who, sources
+google-apps-script/
+  Code.gs             # the Web App backend you deploy on your own Sheet
 ```
+
+## Google Sheet sync
+
+The app is **local-first** and treats your data as the source of truth; sync
+**pushes** everything into a Google Sheet you own through a tiny Apps Script Web
+App. No Google login or OAuth is needed in the app — just a URL and a shared
+secret token.
+
+### One-time setup
+
+1. Create a new Google Sheet (or copy your cashflow file).
+2. **Extensions ▸ Apps Script**, delete the sample, and paste
+   [`google-apps-script/Code.gs`](google-apps-script/Code.gs).
+3. Set `TOKEN` in the script to a long random secret.
+4. **Deploy ▸ New deployment ▸ Web app** — *Execute as: Me*, *Who has access:
+   Anyone* (the token is what protects the data). Copy the `…/exec` URL.
+5. In the app: **Saldo ▸ Sinkronisasi Google Sheet**, paste the URL + the same
+   token, then tap **Sinkronkan ke Sheet**.
+
+### What gets written
+
+- **`Transaksi`** — one row per transaction (flat table you can pivot/chart):
+  `id, type, date, merchant, amount, category, incomeCategory, who, source,
+  creditCard, note, items (JSON), scanned, createdAt`.
+- **`Pengaturan`** — `section | key | value` rows for budgets (`budget`),
+  opening balances (`opening`), and credit-card config (`cc`).
+
+> This intentionally **adjusts** the original pivot-style `TEMPLATE` sheet into a
+> normalized transactions table, which is what the app reads/writes cleanly. Your
+> own pivots, monthly summaries, and charts can be built on top of `Transaksi`.
+
+**Tarik dari Sheet** pulls the Sheet back and replaces local data — handy for a
+new phone or to restore a backup. (Sync direction is app → Sheet; pulling is a
+full replace, not a merge.)
 
 ## Running the app
 

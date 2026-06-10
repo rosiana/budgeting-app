@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,14 +21,24 @@ import {
   sourceBalances,
   totalBalance,
 } from '../store/selectors';
+import { pullFromSheet, pushToSheet } from '../sync/sheets';
 import { colors, fill, radius, sourceOf, SOURCES, spacing } from '../theme';
 import { SourceId } from '../types';
 import { formatCurrency, formatDateShort } from '../utils/format';
 
 export default function BalancesScreen() {
   const insets = useSafeAreaInsets();
-  const { transactions, openingBalances, creditCard, setOpeningBalance, setCreditCard } =
-    useBudget();
+  const {
+    transactions,
+    openingBalances,
+    creditCard,
+    setOpeningBalance,
+    setCreditCard,
+    syncData,
+    syncConfig,
+    setSyncConfig,
+    replaceData,
+  } = useBudget();
 
   const balances = useMemo(
     () => sourceBalances(transactions, openingBalances, creditCard),
@@ -53,6 +65,62 @@ export default function BalancesScreen() {
   const stepDay = (key: 'statementDay' | 'dueDay', delta: number) => {
     const next = Math.min(28, Math.max(1, creditCard[key] + delta));
     setCreditCard({ [key]: next });
+  };
+
+  // --- Google Sheet sync ---
+  const [url, setUrl] = useState(syncConfig.url);
+  const [token, setToken] = useState(syncConfig.token);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+
+  // Pick up the persisted config once it loads from storage.
+  useEffect(() => {
+    setUrl(syncConfig.url);
+    setToken(syncConfig.token);
+  }, [syncConfig.url, syncConfig.token]);
+
+  const onPush = async () => {
+    setBusy(true);
+    setStatus('Mengirim ke Google Sheet…');
+    setSyncConfig({ url, token });
+    try {
+      const { count } = await pushToSheet({ url, token }, syncData);
+      const at = Date.now();
+      setSyncConfig({ lastSyncedAt: at });
+      setStatus(`Tersinkron — ${count} transaksi terkirim.`);
+    } catch (e: any) {
+      setStatus(`Gagal: ${e.message ?? e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPull = () => {
+    Alert.alert(
+      'Tarik dari Sheet',
+      'Ini akan mengganti seluruh data di HP ini dengan data dari Google Sheet. Lanjutkan?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Tarik & ganti',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            setStatus('Menarik dari Google Sheet…');
+            setSyncConfig({ url, token });
+            try {
+              const data = await pullFromSheet({ url, token });
+              replaceData(data);
+              setStatus(`Berhasil — ${data.transactions.length} transaksi dimuat.`);
+            } catch (e: any) {
+              setStatus(`Gagal: ${e.message ?? e}`);
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -158,6 +226,61 @@ export default function BalancesScreen() {
             jatuh tempo, bukan saat dicatat.
           </Text>
         </Card>
+
+        {/* Google Sheet sync */}
+        <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
+        <Card style={{ marginTop: 0 }}>
+          <Text style={styles.settingHint}>
+            Tempel URL Web App (Apps Script) dan token rahasiamu. Data kamu yang
+            jadi acuan — tombol Sinkronkan mengirim semuanya ke Sheet.
+          </Text>
+
+          <Text style={styles.syncLabel}>URL Web App</Text>
+          <TextInput
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://script.google.com/macros/s/…/exec"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.syncInput}
+          />
+
+          <Text style={styles.syncLabel}>Token rahasia</Text>
+          <TextInput
+            value={token}
+            onChangeText={setToken}
+            placeholder="token yang sama dengan di Code.gs"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            style={styles.syncInput}
+          />
+
+          {status ? (
+            <View style={styles.syncStatus}>
+              {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+              <Text style={styles.syncStatusText}>{status}</Text>
+            </View>
+          ) : syncConfig.lastSyncedAt ? (
+            <Text style={styles.syncMeta}>
+              Terakhir sinkron {formatDateShort(new Date(syncConfig.lastSyncedAt).toISOString().slice(0, 10))}
+            </Text>
+          ) : null}
+
+          <View style={{ height: spacing.md }} />
+          <PrimaryButton
+            label="Sinkronkan ke Sheet"
+            icon="cloud-upload"
+            onPress={onPush}
+            disabled={busy || !url}
+          />
+          <TouchableOpacity onPress={onPull} disabled={busy || !url} style={styles.pullBtn}>
+            <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />
+            <Text style={styles.pullText}>Tarik dari Sheet (ganti data lokal)</Text>
+          </TouchableOpacity>
+        </Card>
       </ScrollView>
 
       {/* Opening balance editor */}
@@ -258,6 +381,22 @@ const styles = StyleSheet.create({
   },
   stepValue: { fontSize: 16, fontWeight: '800', color: colors.text, minWidth: 24, textAlign: 'center' },
   settingHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, lineHeight: 17 },
+  syncLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md, marginBottom: 6 },
+  syncInput: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: colors.text,
+  },
+  syncStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md },
+  syncStatusText: { flex: 1, fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  syncMeta: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, fontWeight: '600' },
+  pullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: spacing.md, padding: spacing.sm },
+  pullText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...fill, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {

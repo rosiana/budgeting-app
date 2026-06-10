@@ -37,8 +37,10 @@ export type SourceId =
   | 'bni'
   | 'ovo'
   | 'shopeepay'
+  | 'gopay'
   | 'bibit'
   | 'ajaib'
+  | 'emas'
   | 'tunai';
 
 export interface Category {
