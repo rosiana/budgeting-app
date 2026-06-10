@@ -16,22 +16,40 @@ import { Empty, IconCircle, Pill } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
-import { CATEGORIES, categoryOf, colors, radius, spacing } from '../theme';
-import { CategoryId, Transaction } from '../types';
+import {
+  CATEGORIES,
+  categoryOf,
+  colors,
+  radius,
+  sourceOf,
+  spacing,
+  WHO,
+  whoOf,
+} from '../theme';
+import { CategoryId, Transaction, WhoId } from '../types';
 import { formatCurrency, formatDateFriendly } from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Mode = 'kategori' | 'orang';
 
 export default function TransactionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { transactions, deleteTransaction } = useBudget();
-  const [filter, setFilter] = useState<CategoryId | 'all'>('all');
+  const [mode, setMode] = useState<Mode>('kategori');
+  const [catFilter, setCatFilter] = useState<CategoryId | 'all'>('all');
+  const [whoFilter, setWhoFilter] = useState<WhoId | 'all'>('all');
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? transactions : transactions.filter((t) => t.category === filter)),
-    [transactions, filter]
-  );
+  const filtered = useMemo(() => {
+    if (mode === 'kategori') {
+      return catFilter === 'all'
+        ? transactions
+        : transactions.filter((t) => t.category === catFilter);
+    }
+    return whoFilter === 'all'
+      ? transactions
+      : transactions.filter((t) => t.who === whoFilter);
+  }, [transactions, mode, catFilter, whoFilter]);
 
   const sections = useMemo(
     () =>
@@ -44,9 +62,9 @@ export default function TransactionsScreen() {
   );
 
   const confirmDelete = (tx: Transaction) => {
-    Alert.alert('Delete expense', `Remove "${tx.merchant}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) },
+    Alert.alert('Hapus transaksi', `Hapus "${tx.merchant}"?`, [
+      { text: 'Batal', style: 'cancel' },
+      { text: 'Hapus', style: 'destructive', onPress: () => deleteTransaction(tx.id) },
     ]);
   };
 
@@ -58,6 +76,8 @@ export default function TransactionsScreen() {
         amount: tx.amount,
         date: tx.date,
         category: tx.category,
+        who: tx.who,
+        source: tx.source,
         note: tx.note,
         items: tx.items,
         scanned: tx.scanned,
@@ -68,8 +88,23 @@ export default function TransactionsScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={styles.title}>Expenses</Text>
-        <Text style={styles.count}>{transactions.length} total</Text>
+        <Text style={styles.title}>Transaksi</Text>
+        <Text style={styles.count}>{transactions.length} catatan</Text>
+      </View>
+
+      {/* Mode toggle */}
+      <View style={styles.toggle}>
+        {(['kategori', 'orang'] as Mode[]).map((m) => (
+          <TouchableOpacity
+            key={m}
+            onPress={() => setMode(m)}
+            style={[styles.toggleBtn, mode === m && styles.toggleActive]}
+          >
+            <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]}>
+              {m === 'kategori' ? 'Kategori' : 'Orang'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
@@ -78,17 +113,34 @@ export default function TransactionsScreen() {
         style={styles.filterRow}
         contentContainerStyle={{ paddingHorizontal: spacing.lg }}
       >
-        <Pill label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
-        {CATEGORIES.map((c) => (
-          <Pill
-            key={c.id}
-            label={c.label}
-            icon={c.icon as any}
-            color={c.color}
-            active={filter === c.id}
-            onPress={() => setFilter(c.id)}
-          />
-        ))}
+        {mode === 'kategori' ? (
+          <>
+            <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
+            {CATEGORIES.map((c) => (
+              <Pill
+                key={c.id}
+                label={c.label}
+                icon={c.icon as any}
+                color={c.color}
+                active={catFilter === c.id}
+                onPress={() => setCatFilter(c.id)}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <Pill label="Semua" active={whoFilter === 'all'} onPress={() => setWhoFilter('all')} />
+            {WHO.map((w) => (
+              <Pill
+                key={w.id}
+                label={w.label}
+                color={w.color}
+                active={whoFilter === w.id}
+                onPress={() => setWhoFilter(w.id)}
+              />
+            ))}
+          </>
+        )}
       </ScrollView>
 
       <SectionList
@@ -99,8 +151,8 @@ export default function TransactionsScreen() {
         ListEmptyComponent={
           <Empty
             icon="receipt-outline"
-            title="No expenses yet"
-            subtitle="Scan a receipt or add an expense to get started."
+            title="Belum ada transaksi"
+            subtitle="Scan struk atau tambah pengeluaran untuk mulai mencatat."
           />
         }
         renderSectionHeader={({ section }) => (
@@ -111,6 +163,8 @@ export default function TransactionsScreen() {
         )}
         renderItem={({ item }) => {
           const cat = categoryOf(item.category);
+          const person = whoOf(item.who);
+          const src = sourceOf(item.source);
           return (
             <TouchableOpacity
               activeOpacity={0.7}
@@ -127,15 +181,15 @@ export default function TransactionsScreen() {
                   <Text style={styles.amount}>{formatCurrency(item.amount)}</Text>
                 </View>
                 <View style={styles.rowBottom}>
-                  <Text style={styles.cat}>{cat.label}</Text>
-                  {item.scanned ? (
-                    <View style={styles.scanTag}>
-                      <Ionicons name="scan" size={11} color={colors.primary} />
-                      <Text style={styles.scanText}>Scanned</Text>
-                    </View>
-                  ) : null}
+                  <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
+                    <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
+                  </View>
+                  <Text style={styles.meta}>· {src.label}</Text>
                   {item.items && item.items.length ? (
-                    <Text style={styles.cat}>· {item.items.length} items</Text>
+                    <Text style={styles.meta}>· {item.items.length} item</Text>
+                  ) : null}
+                  {item.scanned ? (
+                    <Ionicons name="scan" size={12} color={colors.primary} />
                   ) : null}
                 </View>
               </View>
@@ -160,6 +214,18 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   title: { fontSize: 28, fontWeight: '800', color: colors.text },
   count: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  toggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.border,
+    borderRadius: radius.pill,
+    padding: 3,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+  toggleActive: { backgroundColor: colors.card },
+  toggleText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  toggleTextActive: { color: colors.primary },
   filterRow: { flexGrow: 0, paddingVertical: spacing.sm },
   sectionHeader: {
     flexDirection: 'row',
@@ -182,10 +248,10 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   merchant: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text, marginRight: 8 },
   amount: { fontSize: 15, fontWeight: '800', color: colors.text },
-  rowBottom: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
-  cat: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  scanTag: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  scanText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
+  rowBottom: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+  whoTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  whoTagText: { fontSize: 11, fontWeight: '700' },
+  meta: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   fab: {
     position: 'absolute',
     right: spacing.lg,

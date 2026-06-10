@@ -6,11 +6,13 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { WhoId } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../components/ui';
 import { guessCategory } from '../ocr/parseReceipt';
@@ -20,6 +22,8 @@ import { colors, fill, radius, spacing } from '../theme';
 import { todayISO } from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'ScanReceipt'>;
+
+const DEFAULT_WHO: WhoId = Platform.OS === 'ios' ? 'rosi' : 'rizal';
 
 export default function ScanReceiptScreen() {
   const navigation = useNavigation<Nav>();
@@ -31,7 +35,7 @@ export default function ScanReceiptScreen() {
 
   const process = async (uri: string) => {
     setBusy(true);
-    setStatus('Reading receipt…');
+    setStatus('Membaca struk…');
     try {
       const parsed = await recognizeReceipt(uri);
       const category = guessCategory(
@@ -43,13 +47,15 @@ export default function ScanReceiptScreen() {
           amount: parsed.total,
           date: parsed.date ?? todayISO(),
           category,
+          who: DEFAULT_WHO,
+          source: 'bca',
           items: parsed.items,
           scanned: true,
         },
       });
     } catch (e) {
       console.warn('OCR failed', e);
-      setStatus('Could not read that receipt. Try again or enter it manually.');
+      setStatus('Gagal membaca struk. Coba lagi atau isi manual.');
       setBusy(false);
     }
   };
@@ -57,7 +63,7 @@ export default function ScanReceiptScreen() {
   const capture = async () => {
     if (!cameraRef.current || busy) return;
     setBusy(true);
-    setStatus('Capturing…');
+    setStatus('Mengambil foto…');
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
       if (photo?.uri) await process(photo.uri);
@@ -91,18 +97,18 @@ export default function ScanReceiptScreen() {
     return (
       <View style={[styles.center, { padding: spacing.xl }]}>
         <Ionicons name="camera-outline" size={56} color={colors.primary} />
-        <Text style={styles.permTitle}>Camera access needed</Text>
+        <Text style={styles.permTitle}>Butuh akses kamera</Text>
         <Text style={styles.permText}>
-          Allow camera access to scan receipts. We process everything on your
-          device — your photos never leave your phone.
+          Izinkan akses kamera untuk scan struk. Semua diproses di HP-mu — foto
+          tidak pernah dikirim ke mana pun.
         </Text>
         <View style={{ height: spacing.lg }} />
-        <PrimaryButton label="Allow camera" icon="camera" onPress={requestPermission} />
+        <PrimaryButton label="Izinkan kamera" icon="camera" onPress={requestPermission} />
         <TouchableOpacity onPress={pickFromLibrary} style={{ marginTop: spacing.lg }}>
-          <Text style={styles.linkText}>Import from photos instead</Text>
+          <Text style={styles.linkText}>Atau pilih dari galeri</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: spacing.md }}>
-          <Text style={styles.muted}>Cancel</Text>
+          <Text style={styles.muted}>Batal</Text>
         </TouchableOpacity>
       </View>
     );
@@ -116,7 +122,7 @@ export default function ScanReceiptScreen() {
       {/* Framing guide */}
       <View style={styles.overlay} pointerEvents="none">
         <View style={styles.frame} />
-        <Text style={styles.hint}>Line up the receipt inside the frame</Text>
+        <Text style={styles.hint}>Posisikan struk di dalam bingkai</Text>
       </View>
 
       {/* Top bar */}
@@ -124,7 +130,7 @@ export default function ScanReceiptScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
           <Ionicons name="close" size={24} color={colors.white} />
         </TouchableOpacity>
-        <Text style={styles.topTitle}>Scan receipt</Text>
+        <Text style={styles.topTitle}>Scan Struk</Text>
         <View style={styles.iconBtn} />
       </View>
 
@@ -142,7 +148,7 @@ export default function ScanReceiptScreen() {
         <View style={styles.controlRow}>
           <TouchableOpacity onPress={pickFromLibrary} style={styles.sideBtn} disabled={busy}>
             <Ionicons name="images-outline" size={26} color={colors.white} />
-            <Text style={styles.sideLabel}>Photos</Text>
+            <Text style={styles.sideLabel}>Galeri</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={capture} style={styles.shutter} disabled={busy}>
@@ -157,6 +163,7 @@ export default function ScanReceiptScreen() {
             <Ionicons name="create-outline" size={26} color={colors.white} />
             <Text style={styles.sideLabel}>Manual</Text>
           </TouchableOpacity>
+          {/* "Manual" keeps the English-friendly word commonly used in ID UIs */}
         </View>
       </View>
     </View>

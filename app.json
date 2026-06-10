@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Receipt Budget",
+    "name": "Keuangan Kita",
     "slug": "budgeting-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,8 +11,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.receiptbudget.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "We use the camera so you can scan receipts and add expenses automatically.",
-        "NSPhotoLibraryUsageDescription": "We access your photos so you can import a receipt image to scan."
+        "NSCameraUsageDescription": "Kamera dipakai untuk scan struk dan mencatat pengeluaran secara otomatis.",
+        "NSPhotoLibraryUsageDescription": "Akses galeri dipakai untuk memilih foto struk yang ingin di-scan."
       }
     },
     "android": {
@@ -36,13 +36,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Receipt Budget to use the camera to scan receipts."
+          "cameraPermission": "Izinkan Keuangan Kita memakai kamera untuk scan struk."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Receipt Budget to access your photos to import receipts."
+          "photosPermission": "Izinkan Keuangan Kita mengakses galeri untuk memilih foto struk."
         }
       ],
       "expo-font"

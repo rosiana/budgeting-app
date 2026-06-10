@@ -1,4 +1,4 @@
-import { CategoryId, LineItem } from '../types';
+import { CategoryId, LineItem, SourceId, WhoId } from '../types';
 
 /** Prefill payload passed from the scanner into the add/edit form. */
 export interface TransactionDraft {
@@ -7,6 +7,8 @@ export interface TransactionDraft {
   amount?: number;
   date?: string;
   category?: CategoryId;
+  who?: WhoId;
+  source?: SourceId;
   note?: string;
   items?: LineItem[];
   scanned?: boolean;

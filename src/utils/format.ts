@@ -1,18 +1,26 @@
-export function formatCurrency(amount: number): string {
-  return amount.toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+/** Group integer digits with "." thousands separators (Indonesian style). */
+function groupThousands(n: number): string {
+  const neg = n < 0;
+  const s = Math.round(Math.abs(n))
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (neg ? '-' : '') + s;
 }
 
-/** Compact currency for tight spaces, e.g. $1.2k */
+/** Rupiah, no decimals: e.g. Rp187.500 */
+export function formatCurrency(amount: number): string {
+  return 'Rp' + groupThousands(amount);
+}
+
+/** Compact Rupiah for tight spaces: Rp1,2jt / Rp250rb / Rp2M */
 export function formatCompact(amount: number): string {
-  if (Math.abs(amount) >= 1000) {
-    return '$' + (amount / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  }
-  return '$' + amount.toFixed(0);
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '').replace('.', ',');
+  if (abs >= 1_000_000_000) return `${sign}Rp${trim(abs / 1_000_000_000)}M`;
+  if (abs >= 1_000_000) return `${sign}Rp${trim(abs / 1_000_000)}jt`;
+  if (abs >= 1_000) return `${sign}Rp${trim(abs / 1_000)}rb`;
+  return `${sign}Rp${Math.round(abs)}`;
 }
 
 /** yyyy-mm-dd in local time */
@@ -37,8 +45,13 @@ export function currentMonthKey(): string {
 }
 
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+const MONTHS_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
 ];
 
 export function formatMonth(key: string): string {
@@ -47,14 +60,14 @@ export function formatMonth(key: string): string {
 }
 
 export function formatDateShort(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  return `${MONTHS[m - 1].slice(0, 3)} ${d}`;
+  const [, m, d] = isoDate.split('-').map(Number);
+  return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
 
 export function formatDateFriendly(isoDate: string): string {
-  if (isoDate === todayISO()) return 'Today';
+  if (isoDate === todayISO()) return 'Hari ini';
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  if (isoDate === toISODate(yesterday)) return 'Yesterday';
+  if (isoDate === toISODate(yesterday)) return 'Kemarin';
   return formatDateShort(isoDate);
 }

@@ -10,7 +10,7 @@ import { AppData, Budgets, CategoryId, Transaction } from '../types';
 import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
 
-const STORAGE_KEY = 'receipt-budget:data:v1';
+const STORAGE_KEY = 'receipt-budget:data:v2';
 
 type Action =
   | { type: 'hydrate'; data: AppData }

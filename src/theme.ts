@@ -1,4 +1,11 @@
-import { Category, CategoryId } from './types';
+import {
+  Category,
+  CategoryId,
+  Source,
+  SourceId,
+  Who,
+  WhoId,
+} from './types';
 
 export const colors = {
   primary: '#0E7C66',
@@ -41,14 +48,18 @@ export const fill = {
 } as const;
 
 export const CATEGORIES: Category[] = [
-  { id: 'groceries', label: 'Groceries', icon: 'cart', color: '#2E9E5B' },
-  { id: 'dining', label: 'Dining', icon: 'restaurant', color: '#F4A259' },
-  { id: 'transport', label: 'Transport', icon: 'car', color: '#4C8BF5' },
-  { id: 'shopping', label: 'Shopping', icon: 'bag-handle', color: '#B65BC9' },
-  { id: 'bills', label: 'Bills', icon: 'receipt', color: '#E0567A' },
-  { id: 'health', label: 'Health', icon: 'fitness', color: '#19B6A7' },
-  { id: 'entertainment', label: 'Fun', icon: 'game-controller', color: '#7A6BF5' },
-  { id: 'other', label: 'Other', icon: 'ellipsis-horizontal', color: '#8A9A95' },
+  { id: 'cicilan', label: 'Cicilan Rumah', icon: 'home', color: '#E0567A' },
+  { id: 'listrik', label: 'Listrik', icon: 'flash', color: '#F4A259' },
+  { id: 'air', label: 'Air', icon: 'water', color: '#4C8BF5' },
+  { id: 'internet', label: 'Internet', icon: 'wifi', color: '#19B6A7' },
+  { id: 'skincare', label: 'Skincare', icon: 'sparkles', color: '#B65BC9' },
+  { id: 'makan', label: 'Makan & Minum', icon: 'fast-food', color: '#2E9E5B' },
+  { id: 'langganan', label: 'Langganan', icon: 'repeat', color: '#7A6BF5' },
+  { id: 'art', label: 'ART', icon: 'people', color: '#C9893B' },
+  { id: 'sekolah', label: 'Sekolah', icon: 'school', color: '#3FA7D6' },
+  { id: 'fun', label: 'Fun', icon: 'game-controller', color: '#EF6F6C' },
+  { id: 'rumah', label: 'Kebutuhan Rumah', icon: 'cart', color: '#5AA469' },
+  { id: 'lainnya', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
 ];
 
 export const CATEGORY_MAP: Record<CategoryId, Category> = CATEGORIES.reduce(
@@ -60,5 +71,47 @@ export const CATEGORY_MAP: Record<CategoryId, Category> = CATEGORIES.reduce(
 );
 
 export function categoryOf(id: CategoryId): Category {
-  return CATEGORY_MAP[id] ?? CATEGORY_MAP.other;
+  return CATEGORY_MAP[id] ?? CATEGORY_MAP.lainnya;
+}
+
+export const WHO: Who[] = [
+  { id: 'rosi', label: 'Rosi', color: '#B65BC9' },
+  { id: 'rizal', label: 'Rizal', color: '#4C8BF5' },
+  { id: 'nonik', label: 'Nonik', color: '#F4A259' },
+  { id: 'rumah', label: 'Rumah', color: '#0E7C66' },
+  { id: 'lainnya', label: 'Lainnya', color: '#8A9A95' },
+];
+
+export const WHO_MAP: Record<WhoId, Who> = WHO.reduce((acc, w) => {
+  acc[w.id] = w;
+  return acc;
+}, {} as Record<WhoId, Who>);
+
+export function whoOf(id: WhoId): Who {
+  return WHO_MAP[id] ?? WHO_MAP.lainnya;
+}
+
+export const SOURCES: Source[] = [
+  { id: 'bca', label: 'BCA', icon: 'card', color: '#1B4DB1' },
+  { id: 'seabank', label: 'SeaBank', icon: 'card', color: '#E1542B' },
+  { id: 'bsi', label: 'BSI', icon: 'card', color: '#00936B' },
+  { id: 'mandiri', label: 'Mandiri', icon: 'card', color: '#0A3D8F' },
+  { id: 'bni', label: 'BNI', icon: 'card', color: '#E97A1A' },
+  { id: 'ovo', label: 'OVO', icon: 'phone-portrait', color: '#4B2A8A' },
+  { id: 'shopeepay', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D' },
+  { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F' },
+  { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6' },
+  { id: 'tunai', label: 'Tunai', icon: 'cash', color: '#2E9E5B' },
+];
+
+export const SOURCE_MAP: Record<SourceId, Source> = SOURCES.reduce(
+  (acc, s) => {
+    acc[s.id] = s;
+    return acc;
+  },
+  {} as Record<SourceId, Source>
+);
+
+export function sourceOf(id: SourceId): Source {
+  return SOURCE_MAP[id] ?? SOURCE_MAP.tunai;
 }

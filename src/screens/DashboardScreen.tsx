@@ -17,10 +17,11 @@ import { useBudget } from '../store/BudgetContext';
 import {
   dailySpend,
   spendByCategory,
+  spendByWho,
   totalSpent,
   txForMonth,
 } from '../store/selectors';
-import { categoryOf, colors, radius, spacing } from '../theme';
+import { categoryOf, colors, radius, spacing, whoOf } from '../theme';
 import {
   currentMonthKey,
   formatCurrency,
@@ -42,6 +43,7 @@ export default function DashboardScreen() {
     [budgets]
   );
   const byCat = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
+  const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
   const week = useMemo(() => dailySpend(transactions, 7), [transactions]);
   const weekTotal = week.reduce((s, d) => s + d.value, 0);
   const remaining = totalBudget - spent;
@@ -58,18 +60,18 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.greeting}>{formatMonth(mKey)}</Text>
-        <Text style={styles.hero}>Monthly Overview</Text>
+        <Text style={styles.hero}>Ringkasan Bulan Ini</Text>
 
         {/* Balance summary */}
         <Card style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View>
-              <Text style={styles.summaryLabel}>Spent this month</Text>
+              <Text style={styles.summaryLabel}>Pengeluaran bulan ini</Text>
               <Text style={styles.summaryValue}>{formatCurrency(spent)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.summaryLabel}>
-                {remaining >= 0 ? 'Remaining' : 'Over budget'}
+                {remaining >= 0 ? 'Sisa' : 'Lebih'}
               </Text>
               <Text
                 style={[
@@ -88,7 +90,7 @@ export default function DashboardScreen() {
               height={10}
             />
             <Text style={styles.budgetCaption}>
-              of {formatCurrency(totalBudget)} budget
+              dari anggaran {formatCurrency(totalBudget)}
             </Text>
           </View>
         </Card>
@@ -97,29 +99,29 @@ export default function DashboardScreen() {
         <View style={styles.actions}>
           <ActionButton
             icon="scan"
-            label="Scan receipt"
+            label="Scan struk"
             primary
             onPress={() => navigation.navigate('ScanReceipt')}
           />
           <ActionButton
             icon="add"
-            label="Add expense"
+            label="Tambah"
             onPress={() => navigation.navigate('AddTransaction')}
           />
         </View>
 
         {/* Weekly trend */}
-        <SectionTitle>Last 7 days</SectionTitle>
+        <SectionTitle>7 Hari Terakhir</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
           <Text style={styles.weekTotal}>{formatCurrency(weekTotal)}</Text>
-          <Text style={styles.summaryLabel}>spent this week</Text>
+          <Text style={styles.weekCaption}>pengeluaran minggu ini</Text>
           <View style={{ marginTop: spacing.md }}>
             <WeeklyBars data={week} />
           </View>
         </Card>
 
         {/* Category breakdown */}
-        <SectionTitle>By category</SectionTitle>
+        <SectionTitle>Per Kategori</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
           {spent > 0 ? (
             <View style={styles.breakdown}>
@@ -130,7 +132,7 @@ export default function DashboardScreen() {
                   return (
                     <View key={c.category} style={styles.legendRow}>
                       <View style={[styles.dot, { backgroundColor: cat.color }]} />
-                      <Text style={styles.legendLabel}>{cat.label}</Text>
+                      <Text style={styles.legendLabel} numberOfLines={1}>{cat.label}</Text>
                       <Text style={styles.legendValue}>{formatCurrency(c.spent)}</Text>
                     </View>
                   );
@@ -138,20 +140,39 @@ export default function DashboardScreen() {
               </View>
             </View>
           ) : (
-            <Text style={styles.emptyText}>No spending recorded yet this month.</Text>
+            <Text style={styles.emptyText}>Belum ada pengeluaran bulan ini.</Text>
           )}
         </Card>
 
+        {/* Spending by person */}
+        {byWho.length > 0 ? (
+          <>
+            <SectionTitle>Per Orang</SectionTitle>
+            <Card style={{ marginBottom: spacing.xl }}>
+              {byWho.map((w, i) => {
+                const person = whoOf(w.who);
+                const frac = spent > 0 ? w.spent / spent : 0;
+                return (
+                  <View key={w.who} style={[styles.whoRow, i === 0 && { marginTop: 0 }]}>
+                    <View style={[styles.whoDot, { backgroundColor: person.color }]}>
+                      <Text style={styles.whoInitial}>{person.label.charAt(0)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.whoHead}>
+                        <Text style={styles.whoLabel}>{person.label}</Text>
+                        <Text style={styles.whoValue}>{formatCurrency(w.spent)}</Text>
+                      </View>
+                      <ProgressBar pct={frac} color={person.color} height={6} />
+                    </View>
+                  </View>
+                );
+              })}
+            </Card>
+          </>
+        ) : null}
+
         {/* Budgets at a glance */}
-        <SectionTitle
-          action={
-            <TouchableOpacity onPress={() => navigation.navigate('Tabs')}>
-              <Text style={styles.link}>Manage</Text>
-            </TouchableOpacity>
-          }
-        >
-          Budgets
-        </SectionTitle>
+        <SectionTitle>Anggaran</SectionTitle>
         <Card>
           {byCat.slice(0, 5).map((c, i) => {
             const cat = categoryOf(c.category);
@@ -233,6 +254,13 @@ const styles = StyleSheet.create({
   actionGhost: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   actionLabel: { fontSize: 15, fontWeight: '700' },
   weekTotal: { fontSize: 24, fontWeight: '800', color: colors.text },
+  weekCaption: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  whoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  whoDot: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  whoInitial: { color: colors.white, fontWeight: '800', fontSize: 15 },
+  whoHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  whoLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  whoValue: { fontSize: 14, fontWeight: '700', color: colors.text },
   breakdown: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   legend: { flex: 1, gap: spacing.md },
   legendRow: { flexDirection: 'row', alignItems: 'center' },

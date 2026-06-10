@@ -55,15 +55,15 @@ export default function BudgetsScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Budgets</Text>
+        <Text style={styles.title}>Anggaran</Text>
         <Text style={styles.subtitle}>{formatMonth(mKey)}</Text>
 
         <Card style={styles.summary}>
           <View style={styles.summaryRow}>
-            <SummaryStat label="Budget" value={formatCurrency(totalBudget)} />
-            <SummaryStat label="Spent" value={formatCurrency(spent)} />
+            <SummaryStat label="Anggaran" value={formatCurrency(totalBudget)} />
+            <SummaryStat label="Terpakai" value={formatCurrency(spent)} />
             <SummaryStat
-              label="Left"
+              label="Sisa"
               value={formatCurrency(Math.max(0, totalBudget - spent))}
               color={totalBudget - spent >= 0 ? colors.success : colors.danger}
             />
@@ -72,13 +72,13 @@ export default function BudgetsScreen() {
             <View style={styles.warn}>
               <Ionicons name="alert-circle" size={16} color={colors.danger} />
               <Text style={styles.warnText}>
-                {overCount} {overCount === 1 ? 'category is' : 'categories are'} over budget
+                {overCount} kategori melebihi anggaran
               </Text>
             </View>
           ) : null}
         </Card>
 
-        <Text style={styles.hint}>Tap a category to adjust its monthly limit.</Text>
+        <Text style={styles.hint}>Ketuk kategori untuk mengubah batas bulanannya.</Text>
 
         {byCat.map((c) => {
           const cat = categoryOf(c.category);
@@ -102,12 +102,12 @@ export default function BudgetsScreen() {
               </View>
               <View style={styles.catFoot}>
                 <Text style={[styles.catSpent, over && { color: colors.danger }]}>
-                  {formatCurrency(c.spent)} spent
+                  {formatCurrency(c.spent)} terpakai
                 </Text>
                 <Text style={styles.catBudget}>
                   {c.budget > 0
-                    ? `${formatCurrency(Math.max(0, c.budget - c.spent))} left of ${formatCurrency(c.budget)}`
-                    : 'No limit set'}
+                    ? `sisa ${formatCurrency(Math.max(0, c.budget - c.spent))} dari ${formatCurrency(c.budget)}`
+                    : 'Belum ada batas'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -123,22 +123,22 @@ export default function BudgetsScreen() {
           <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setEditing(null)} />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>
-              {editing ? categoryOf(editing).label : ''} budget
+              Anggaran {editing ? categoryOf(editing).label : ''}
             </Text>
-            <Text style={styles.sheetSub}>Set your monthly limit for this category.</Text>
+            <Text style={styles.sheetSub}>Atur batas pengeluaran bulanan untuk kategori ini.</Text>
             <View style={styles.inputRow}>
-              <Text style={styles.currency}>$</Text>
+              <Text style={styles.currency}>Rp</Text>
               <TextInput
                 value={draftValue}
                 onChangeText={setDraftValue}
-                keyboardType="decimal-pad"
+                keyboardType="number-pad"
                 placeholder="0"
                 autoFocus
                 style={styles.input}
                 placeholderTextColor={colors.textMuted}
               />
             </View>
-            <PrimaryButton label="Save limit" onPress={saveEditor} />
+            <PrimaryButton label="Simpan Batas" onPress={saveEditor} />
           </View>
         </KeyboardAvoidingView>
       </Modal>

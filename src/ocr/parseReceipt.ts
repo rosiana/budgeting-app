@@ -1,52 +1,70 @@
 import { CategoryId, LineItem, ParsedReceipt } from '../types';
 
 /**
- * Heuristic receipt parser. Takes the raw text returned by on-device OCR
- * (ML Kit / Apple Vision) and extracts the fields a budgeting entry needs.
+ * Heuristic receipt parser tuned for Indonesian (Rupiah) receipts. Takes the
+ * raw text returned by on-device OCR and extracts the fields a budgeting entry
+ * needs, including a best-effort category per line item.
  *
- * It is intentionally forgiving: OCR output is noisy, line order varies, and
- * different stores format totals differently. Every field is best-effort and
- * the UI lets the user correct anything before saving.
+ * Everything is best-effort and editable in the UI afterwards — OCR is noisy
+ * and store formats vary.
  */
 
-// Matches money like 12.34, 1,234.56, $4.00, 4.00$, -3.50
-const MONEY = /(-?\$?\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})|\-?\$?\s?\d+[.,]\d{2})/g;
+// Money tokens: grouped thousands (25.000 / 1.250.000 / 25.000,00),
+// simple decimals (3.49 / 25,00), or a plain integer (15000).
+const MONEY = /\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+,\d{2}|\d+\.\d{2}|\d{3,}/g;
 
 const TOTAL_KEYWORDS = [
   'grand total',
-  'total due',
-  'amount due',
-  'balance due',
+  'total belanja',
+  'total bayar',
+  'total harga',
+  'total tagihan',
+  'total pembayaran',
+  'jumlah bayar',
   'total',
-  'to pay',
-  'total amount',
+  'jumlah',
 ];
 
-// Lines we never want to treat as the final total or as a line item.
-const SUBTOTAL_NOISE = ['subtotal', 'sub total', 'tax', 'change', 'cash', 'tip', 'gratuity', 'tender', 'visa', 'mastercard', 'debit', 'credit', 'balance'];
+// Lines that must never be treated as the grand total or as a product item.
+const NOISE = [
+  'subtotal', 'sub total', 'sub-total',
+  'total item', 'qty', 'jml item', 'jumlah item',
+  'ppn', 'pb1', 'pajak', 'tax', 'dpp', 'service', 'biaya',
+  'diskon', 'discount', 'potongan', 'voucher',
+  'tunai', 'cash', 'kembali', 'kembalian', 'change',
+  'debit', 'kredit', 'credit', 'qris', 'gopay', 'ovo', 'dana', 'shopeepay',
+  'npwp', 'kasir', 'cashier', 'no.', 'struk', 'terima kasih',
+  'tgl', 'tanggal', 'jam', 'waktu', 'date', 'time',
+];
 
+// Lines that contain a date (and little else) shouldn't become line items.
+const DATE_LINE = /\b(?:20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b/;
+
+/** Parse a single money token (Indonesian-first) into a number of Rupiah. */
 function parseMoney(raw: string): number | null {
-  let s = raw.replace(/[^0-9.,-]/g, '').trim();
+  let s = raw.toLowerCase().replace(/rp|idr/g, '').replace(/[^\d.,]/g, '').trim();
   if (!s) return null;
-  // Normalise thousands/decimal separators -> a JS-parseable number.
-  if (s.includes(',') && s.includes('.')) {
-    s = s.replace(/,/g, ''); // 1,234.56 -> 1234.56
-  } else if (s.includes(',')) {
-    // Could be European decimal (4,00) or thousands (1,234). Treat trailing
-    // ",dd" as decimals.
-    if (/,\d{2}$/.test(s)) s = s.replace(/,/g, '.');
-    else s = s.replace(/,/g, '');
+
+  const lastSep = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  let intPart = s;
+  let frac = '';
+  if (lastSep >= 0) {
+    const after = s.length - lastSep - 1;
+    // A trailing group of 1–2 digits is a decimal; 3 digits is thousands.
+    if (after === 1 || after === 2) {
+      intPart = s.slice(0, lastSep);
+      frac = s.slice(lastSep + 1);
+    }
   }
-  const n = parseFloat(s);
+  intPart = intPart.replace(/[.,]/g, '');
+  const n = parseFloat(frac ? `${intPart}.${frac}` : intPart);
   return Number.isFinite(n) ? n : null;
 }
 
 function moneyTokens(line: string): number[] {
   const matches = line.match(MONEY);
   if (!matches) return [];
-  return matches
-    .map(parseMoney)
-    .filter((n): n is number => n !== null);
+  return matches.map(parseMoney).filter((n): n is number => n !== null);
 }
 
 function lastMoney(line: string): number | null {
@@ -57,17 +75,16 @@ function lastMoney(line: string): number | null {
 // --- Date extraction -------------------------------------------------------
 
 const MONTH_NAMES: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, mei: 5, jun: 6,
+  jul: 7, aug: 8, agu: 8, agt: 8, sep: 9, oct: 10, okt: 10,
+  nov: 11, dec: 12, des: 12,
 };
 
 function clampDate(y: number, m: number, d: number): string | null {
   if (m < 1 || m > 12 || d < 1 || d > 31) return null;
   if (y < 100) y += 2000;
   if (y < 2000 || y > 2100) return null;
-  const mm = String(m).padStart(2, '0');
-  const dd = String(d).padStart(2, '0');
-  return `${y}-${mm}-${dd}`;
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 function extractDate(text: string): string | undefined {
@@ -77,29 +94,17 @@ function extractDate(text: string): string | undefined {
     const iso = clampDate(+m[1], +m[2], +m[3]);
     if (iso) return iso;
   }
-  // Numeric: 03/15/2024 or 15/03/24 — assume US (m/d) when ambiguous.
+  // Numeric: 15/03/2024 — Indonesian receipts use day-first.
   m = text.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
   if (m) {
-    let a = +m[1];
-    let b = +m[2];
+    const a = +m[1];
+    const b = +m[2];
     const y = +m[3];
-    // If first part can't be a month but second can, swap (d/m order).
-    if (a > 12 && b <= 12) {
-      const iso = clampDate(y, b, a);
-      if (iso) return iso;
-    }
-    const iso = clampDate(y, a, b);
+    // Day-first when possible, else fall back to the other order.
+    const iso = clampDate(y, b, a) ?? clampDate(y, a, b);
     if (iso) return iso;
   }
-  // Named month: Mar 15, 2024 / 15 March 2024
-  m = text.match(/\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(20\d{2})\b/);
-  if (m) {
-    const mon = MONTH_NAMES[m[1].slice(0, 3).toLowerCase()];
-    if (mon) {
-      const iso = clampDate(+m[3], mon, +m[2]);
-      if (iso) return iso;
-    }
-  }
+  // Named month: 15 Mar 2024 / 15 Maret 2024
   m = text.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(20\d{2})\b/);
   if (m) {
     const mon = MONTH_NAMES[m[2].slice(0, 3).toLowerCase()];
@@ -114,12 +119,10 @@ function extractDate(text: string): string | undefined {
 // --- Total extraction ------------------------------------------------------
 
 function extractTotal(lines: string[]): number | undefined {
-  // Pass 1: explicit "total" keyword lines (prefer the most specific keyword,
-  // and the last occurrence, which is usually the grand total).
   let best: { rank: number; value: number } | null = null;
   lines.forEach((line) => {
     const lower = line.toLowerCase();
-    if (SUBTOTAL_NOISE.some((n) => lower.includes(n))) return;
+    if (NOISE.some((n) => lower.includes(n))) return;
     const idx = TOTAL_KEYWORDS.findIndex((k) => lower.includes(k));
     if (idx === -1) return;
     const value = lastMoney(line);
@@ -129,8 +132,7 @@ function extractTotal(lines: string[]): number | undefined {
   });
   if (best) return (best as { value: number }).value;
 
-  // Pass 2: no keyword found — fall back to the largest money value on the
-  // receipt, which is almost always the total.
+  // Fallback: the largest money value is almost always the total.
   let max: number | undefined;
   for (const line of lines) {
     for (const v of moneyTokens(line)) {
@@ -143,14 +145,12 @@ function extractTotal(lines: string[]): number | undefined {
 // --- Merchant extraction ---------------------------------------------------
 
 function extractMerchant(lines: string[]): string | undefined {
-  // The merchant name is usually one of the first non-empty lines and contains
-  // letters but not prices or obvious metadata.
   for (const line of lines.slice(0, 5)) {
     const trimmed = line.trim();
     if (trimmed.length < 3) continue;
     if (moneyTokens(trimmed).length) continue;
     if (/^\d+$/.test(trimmed)) continue;
-    if (/(receipt|invoice|tel|phone|www\.|http|@|\d{3}[-.]\d{3})/i.test(trimmed)) continue;
+    if (/(struk|invoice|tel|telp|phone|www\.|http|@|npwp|jl\.|jalan)/i.test(trimmed)) continue;
     const letters = (trimmed.match(/[A-Za-z]/g) || []).length;
     if (letters < 2) continue;
     return titleCase(trimmed.replace(/\s{2,}/g, ' '));
@@ -159,57 +159,63 @@ function extractMerchant(lines: string[]): string | undefined {
 }
 
 function titleCase(s: string): string {
-  // Leave all-caps short tokens (likely brand) but tidy long shouting names.
   if (s === s.toUpperCase() && s.length > 4) {
-    return s
-      .toLowerCase()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
   }
   return s;
-}
-
-// --- Line items ------------------------------------------------------------
-
-function extractItems(lines: string[], total?: number): LineItem[] {
-  const items: LineItem[] = [];
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    if (SUBTOTAL_NOISE.some((n) => lower.includes(n))) continue;
-    if (TOTAL_KEYWORDS.some((k) => lower.includes(k))) continue;
-    const amount = lastMoney(line);
-    if (amount == null || amount <= 0) continue;
-    // Description = the text before the trailing price.
-    const desc = line
-      .replace(MONEY, '')
-      .replace(/\b(qty|x\d+|@)\b/gi, '')
-      .replace(/[|*•]/g, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    if (desc.length < 2) continue;
-    if (total != null && Math.abs(amount - total) < 0.001) continue; // skip the total row
-    items.push({ description: titleCase(desc), amount });
-  }
-  return items.slice(0, 25);
 }
 
 // --- Category guessing -----------------------------------------------------
 
 const CATEGORY_HINTS: { category: CategoryId; words: string[] }[] = [
-  { category: 'groceries', words: ['market', 'grocery', 'foods', 'supermarket', 'mart', 'trader', 'aldi', 'kroger', 'safeway', 'costco', 'walmart', 'produce'] },
-  { category: 'dining', words: ['cafe', 'coffee', 'restaurant', 'grill', 'pizza', 'burger', 'bar ', 'kitchen', 'bistro', 'chipotle', 'mcdonald', 'starbucks', 'tacos', 'sushi', 'diner'] },
-  { category: 'transport', words: ['gas', 'fuel', 'shell', 'chevron', 'exxon', 'bp ', 'uber', 'lyft', 'parking', 'transit', 'metro', 'toll'] },
-  { category: 'shopping', words: ['target', 'amazon', 'store', 'apparel', 'clothing', 'shoes', 'best buy', 'ikea', 'mall'] },
-  { category: 'bills', words: ['electric', 'utility', 'pg&e', 'water', 'internet', 'comcast', 'verizon', 'at&t', 'insurance', 'rent'] },
-  { category: 'health', words: ['pharmacy', 'cvs', 'walgreens', 'clinic', 'dental', 'medical', 'gym', 'fitness', 'doctor'] },
-  { category: 'entertainment', words: ['cinema', 'theater', 'netflix', 'spotify', 'game', 'tickets', 'movie', 'steam'] },
+  { category: 'cicilan', words: ['cicilan', 'angsuran', 'kpr', 'installment'] },
+  { category: 'listrik', words: ['listrik', 'pln', 'token listrik'] },
+  { category: 'air', words: ['pdam', 'air minum', 'galon', 'tagihan air'] },
+  { category: 'internet', words: ['internet', 'indihome', 'wifi', 'biznet', 'firstmedia', 'pulsa', 'paket data', 'telkomsel', 'by.u', 'smartfren', 'kuota'] },
+  { category: 'skincare', words: ['skincare', 'facial', 'serum', 'toner', 'sunscreen', 'moisturizer', 'somethinc', 'wardah', 'scarlett', 'azarine'] },
+  { category: 'langganan', words: ['netflix', 'spotify', 'youtube', 'disney', 'vidio', 'wetv', 'iqiyi', 'canva', 'icloud', 'google one', 'langganan', 'subscription'] },
+  { category: 'art', words: ['gaji art', ' art ', 'asisten', 'pembantu', 'helper', 'pengasuh'] },
+  { category: 'sekolah', words: ['sekolah', 'spp', 'uang sekolah', 'les', 'bimbel', 'seragam', 'kampus', 'kuliah', 'daycare', 'buku tulis'] },
+  { category: 'fun', words: ['tiket', 'bioskop', 'cinema', 'xxi', 'cgv', 'game', 'steam', 'mainan', 'wisata', 'liburan', 'hotel', 'traveloka', 'konser', 'karaoke'] },
+  { category: 'rumah', words: ['indomaret', 'alfamart', 'superindo', 'hypermart', 'transmart', 'giant', 'hero', 'ikea', 'informa', 'ace hardware', 'beras', 'minyak', 'sabun', 'deterjen', 'tisu', 'tissue', 'peralatan', 'dapur', 'gas elpiji', 'elpiji'] },
+  { category: 'makan', words: ['makan', 'resto', 'restaurant', 'cafe', 'kafe', 'kopi', 'coffee', 'warung', 'bakso', 'ayam', 'nasi', 'mie', 'minum', 'gofood', 'grabfood', 'shopeefood', 'snack', 'roti', 'kue', 'susu', 'buah', 'sayur'] },
 ];
 
 export function guessCategory(text: string): CategoryId {
-  const lower = text.toLowerCase();
+  const lower = ` ${text.toLowerCase()} `;
   for (const hint of CATEGORY_HINTS) {
     if (hint.words.some((w) => lower.includes(w))) return hint.category;
   }
-  return 'other';
+  return 'lainnya';
+}
+
+// --- Line items ------------------------------------------------------------
+
+function extractItems(lines: string[], total: number | undefined, fallback: CategoryId): LineItem[] {
+  const items: LineItem[] = [];
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (NOISE.some((n) => lower.includes(n))) continue;
+    if (TOTAL_KEYWORDS.some((k) => lower.includes(k))) continue;
+    if (DATE_LINE.test(line)) continue;
+    const amount = lastMoney(line);
+    if (amount == null || amount <= 0) continue;
+    const desc = line
+      .replace(MONEY, '')
+      .replace(/\b(qty|x\d+|@|rp|idr)\b/gi, '')
+      .replace(/[|*•]/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (desc.length < 2) continue;
+    if (total != null && Math.abs(amount - total) < 0.001) continue; // skip the total row
+    const guessed = guessCategory(desc);
+    items.push({
+      description: titleCase(desc),
+      amount,
+      category: guessed === 'lainnya' ? fallback : guessed,
+    });
+  }
+  return items.slice(0, 30);
 }
 
 // --- Public API ------------------------------------------------------------
@@ -221,11 +227,16 @@ export function parseReceipt(rawText: string): ParsedReceipt {
     .filter(Boolean);
 
   const total = extractTotal(lines);
+  const merchant = extractMerchant(lines);
+  // Category guessed from the merchant + whole receipt; used as the fallback
+  // for items the per-line guesser can't classify.
+  const overall = guessCategory(`${merchant ?? ''} ${rawText}`);
+
   return {
-    merchant: extractMerchant(lines),
+    merchant,
     date: extractDate(rawText),
     total,
-    items: extractItems(lines, total),
+    items: extractItems(lines, total, overall),
     rawText,
   };
 }
