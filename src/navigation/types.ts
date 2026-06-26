@@ -19,6 +19,8 @@ export interface TransactionDraft {
   who?: WhoId;
   source?: SourceId;
   creditCard?: boolean;
+  reimbursable?: boolean;
+  reimbursed?: boolean;
   note?: string;
   items?: LineItem[];
   scanned?: boolean;

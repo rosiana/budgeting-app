@@ -22,6 +22,7 @@ export const colors = {
   textMuted: '#A18C7B', // soft taupe
   border: '#EEE3D8', // warm light
   danger: '#E08576', // soft coral red
+  warning: '#E6A94F', // warm amber
   success: '#6BB98A', // pastel sage green
   white: '#FFFFFF',
   /** Light text/caption color for use on the primary brown background. */
@@ -55,18 +56,36 @@ export const fill = {
 
 export const CATEGORIES: Category[] = [
   { id: 'cicilan', label: 'Cicilan Rumah', icon: 'home', color: '#E0567A' },
-  { id: 'listrik', label: 'Listrik', icon: 'flash', color: '#F4A259' },
-  { id: 'air', label: 'Air', icon: 'water', color: '#4C8BF5' },
-  { id: 'internet', label: 'Internet', icon: 'wifi', color: '#19B6A7' },
-  { id: 'skincare', label: 'Skincare', icon: 'sparkles', color: '#B65BC9' },
+  { id: 'utilitas', label: 'Utilitas', icon: 'flash', color: '#F4A259' },
+  { id: 'skincare', label: 'Personal Care', icon: 'sparkles', color: '#B65BC9' },
   { id: 'makan', label: 'Makan & Minum', icon: 'fast-food', color: '#2E9E5B' },
   { id: 'langganan', label: 'Langganan', icon: 'repeat', color: '#7A6BF5' },
   { id: 'art', label: 'ART', icon: 'people', color: '#C9893B' },
   { id: 'sekolah', label: 'Sekolah', icon: 'school', color: '#3FA7D6' },
   { id: 'fun', label: 'Fun', icon: 'game-controller', color: '#EF6F6C' },
   { id: 'rumah', label: 'Kebutuhan Rumah', icon: 'cart', color: '#5AA469' },
+  { id: 'fashion', label: 'Fashion', icon: 'shirt', color: '#D6749B' },
+  { id: 'rokok', label: 'Rokok & Alkohol', icon: 'wine', color: '#8C6242' },
   { id: 'lainnya', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
 ];
+
+/** Old category ids → current ones (Listrik/Air/Internet merged into Utilitas). */
+export const CATEGORY_MIGRATION: Record<string, CategoryId> = {
+  listrik: 'utilitas',
+  air: 'utilitas',
+  internet: 'utilitas',
+};
+
+export function migrateCategory(id: string): CategoryId {
+  return (CATEGORY_MIGRATION[id] ?? id) as CategoryId;
+}
+
+/** Status color for a budget usage ratio (0..1+): green safe, amber close, red over. */
+export function budgetStatusColor(pct: number): string {
+  if (pct >= 1) return colors.danger;
+  if (pct >= 0.8) return colors.warning;
+  return colors.success;
+}
 
 export const CATEGORY_MAP: Record<CategoryId, Category> = CATEGORIES.reduce(
   (acc, c) => {
@@ -108,11 +127,11 @@ export const DEFAULT_CREDIT_CARD = {
 };
 
 export const WHO: Who[] = [
-  { id: 'rosi', label: 'Rosi', color: '#B65BC9' },
-  { id: 'rizal', label: 'Rizal', color: '#4C8BF5' },
-  { id: 'nonik', label: 'Nonik', color: '#F4A259' },
-  { id: 'rumah', label: 'Rumah', color: '#0E7C66' },
-  { id: 'lainnya', label: 'Lainnya', color: '#8A9A95' },
+  { id: 'rosi', label: 'Rosi', color: '#B65BC9', emoji: '👩' },
+  { id: 'rizal', label: 'Rizal', color: '#4C8BF5', emoji: '👨' },
+  { id: 'nonik', label: 'Nonik', color: '#F4A259', emoji: '👶' },
+  { id: 'rumah', label: 'Rumah', color: '#0E7C66', emoji: '🏠' },
+  { id: 'lainnya', label: 'Lainnya', color: '#8A9A95', emoji: '👥' },
 ];
 
 export const WHO_MAP: Record<WhoId, Who> = WHO.reduce((acc, w) => {

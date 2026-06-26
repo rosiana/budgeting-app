@@ -1,16 +1,16 @@
 // Expense categories, derived from the couple's cashflow spreadsheet.
 export type CategoryId =
-  | 'cicilan' // Cicilan Rumah (house installment) — was "Apartment Rent"
-  | 'listrik' // Listrik (electricity)
-  | 'air' // Air (water)
-  | 'internet' // Internet
-  | 'skincare' // Skincare
+  | 'cicilan' // Cicilan Rumah (house installment)
+  | 'utilitas' // Utilitas (electricity + water + internet)
+  | 'skincare' // Personal Care
   | 'makan' // Makan & Minum (food & beverages)
   | 'langganan' // Langganan (subscriptions)
   | 'art' // ART (asisten rumah tangga / domestic helper)
   | 'sekolah' // Sekolah (school)
   | 'fun' // Fun (hiburan)
   | 'rumah' // Kebutuhan Rumah (household needs)
+  | 'fashion' // Fashion
+  | 'rokok' // Rokok & Alkohol
   | 'lainnya'; // Lainnya (others)
 
 // Income categories, from the cashflow spreadsheet.
@@ -61,6 +61,7 @@ export interface Who {
   id: WhoId;
   label: string;
   color: string;
+  emoji: string;
 }
 
 export interface Source {
@@ -95,6 +96,10 @@ export interface Transaction {
    * not reduce a cash balance until their billing cycle's due date passes.
    */
   creditCard?: boolean;
+  /** Expense the company will pay back. Excluded from spending/budgets. */
+  reimbursable?: boolean;
+  /** Set once the reimbursement has been received (balance restored). */
+  reimbursed?: boolean;
   note?: string;
   items?: LineItem[];
   /** Set when the transaction was created from a scanned receipt */

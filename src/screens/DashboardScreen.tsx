@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -23,7 +23,7 @@ import {
   totalSpent,
   txForMonth,
 } from '../store/selectors';
-import { categoryOf, colors, radius, spacing, whoOf } from '../theme';
+import { budgetStatusColor, categoryOf, colors, radius, spacing, whoOf } from '../theme';
 import {
   currentMonthKey,
   formatCurrency,
@@ -54,13 +54,17 @@ export default function DashboardScreen() {
   const weekTotal = week.reduce((s, d) => s + d.value, 0);
   const remaining = totalBudget - spent;
   const topCats = byCat.filter((c) => c.spent > 0).slice(0, 4);
+  const budgetPct = totalBudget > 0 ? spent / totalBudget : 0;
+  const filledCats = byCat.filter((c) => c.budget > 0 && c.spent >= c.budget);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const selected = week.find((d) => d.iso === selectedDay) ?? null;
 
   return (
     <View style={styles.root}>
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
-          paddingBottom: spacing.xxl * 2,
+          paddingBottom: 110,
           paddingHorizontal: spacing.lg,
         }}
         showsVerticalScrollIndicator={false}
@@ -91,13 +95,22 @@ export default function DashboardScreen() {
           </View>
           <View style={{ marginTop: spacing.md }}>
             <ProgressBar
-              pct={totalBudget > 0 ? spent / totalBudget : 0}
-              color={colors.primary}
+              pct={budgetPct}
+              color={budgetStatusColor(budgetPct)}
+              track={colors.primaryDark}
               height={10}
             />
             <Text style={styles.budgetCaption}>
-              dari anggaran {formatCurrency(totalBudget)}
+              {Math.round(budgetPct * 100)}% dari anggaran {formatCurrency(totalBudget)}
             </Text>
+            {filledCats.length > 0 ? (
+              <View style={styles.budgetWarn}>
+                <Ionicons name="warning" size={13} color="#FFE2B0" />
+                <Text style={styles.budgetWarnText}>
+                  {filledCats.length} kategori sudah penuh / lewat anggaran
+                </Text>
+              </View>
+            ) : null}
           </View>
         </Card>
 
@@ -112,12 +125,13 @@ export default function DashboardScreen() {
           </Card>
           <Card style={styles.cashflowCard}>
             <View style={styles.cashflowTop}>
-              <Ionicons name="swap-vertical" size={16} color={net >= 0 ? colors.primary : colors.danger} />
-              <Text style={styles.cashflowLabel}>Selisih</Text>
+              <Ionicons name="wallet" size={16} color={net >= 0 ? colors.primary : colors.danger} />
+              <Text style={styles.cashflowLabel}>{net >= 0 ? 'Sisa Bulan Ini' : 'Tekor'}</Text>
             </View>
             <Text style={[styles.cashflowValue, { color: net >= 0 ? colors.primary : colors.danger }]}>
               {net >= 0 ? '' : '-'}{formatCurrency(Math.abs(net))}
             </Text>
+            <Text style={styles.cashflowSub}>pemasukan − pengeluaran</Text>
           </Card>
         </View>
 
@@ -141,28 +155,28 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Quick actions */}
-        <View style={styles.actions}>
-          <ActionButton
-            icon="scan"
-            label="Scan struk"
-            primary
-            onPress={() => navigation.navigate('ScanReceipt')}
-          />
-          <ActionButton
-            icon="add"
-            label="Tambah"
-            onPress={() => navigation.navigate('AddTransaction')}
-          />
-        </View>
-
         {/* Weekly trend */}
         <SectionTitle>7 Hari Terakhir</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
-          <Text style={styles.weekTotal}>{formatCurrency(weekTotal)}</Text>
-          <Text style={styles.weekCaption}>pengeluaran minggu ini</Text>
+          {selected ? (
+            <>
+              <Text style={styles.weekTotal}>{formatCurrency(selected.value)}</Text>
+              <Text style={styles.weekCaption}>
+                pengeluaran {formatDateShort(selected.iso)} · ketuk lagi untuk total minggu
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.weekTotal}>{formatCurrency(weekTotal)}</Text>
+              <Text style={styles.weekCaption}>pengeluaran minggu ini · ketuk batang untuk lihat harian</Text>
+            </>
+          )}
           <View style={{ marginTop: spacing.md }}>
-            <WeeklyBars data={week} />
+            <WeeklyBars
+              data={week}
+              selectedIso={selectedDay}
+              onBarPress={(iso) => setSelectedDay((cur) => (cur === iso ? null : iso))}
+            />
           </View>
         </Card>
 
@@ -194,26 +208,20 @@ export default function DashboardScreen() {
         {byWho.length > 0 ? (
           <>
             <SectionTitle>Per Orang</SectionTitle>
-            <Card style={{ marginBottom: spacing.xl }}>
-              {byWho.map((w, i) => {
+            <View style={styles.whoGrid}>
+              {byWho.map((w) => {
                 const person = whoOf(w.who);
-                const frac = spent > 0 ? w.spent / spent : 0;
                 return (
-                  <View key={w.who} style={[styles.whoRow, i === 0 && { marginTop: 0 }]}>
-                    <View style={[styles.whoDot, { backgroundColor: person.color }]}>
-                      <Text style={styles.whoInitial}>{person.label.charAt(0)}</Text>
+                  <View key={w.who} style={styles.whoCard}>
+                    <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
+                      <Text style={styles.whoEmoji}>{person.emoji}</Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.whoHead}>
-                        <Text style={styles.whoLabel}>{person.label}</Text>
-                        <Text style={styles.whoValue}>{formatCurrency(w.spent)}</Text>
-                      </View>
-                      <ProgressBar pct={frac} color={person.color} height={6} />
-                    </View>
+                    <Text style={styles.whoName}>{person.label}</Text>
+                    <Text style={styles.whoSpent}>{formatCurrency(w.spent)}</Text>
                   </View>
                 );
               })}
-            </Card>
+            </View>
           </>
         ) : null}
 
@@ -237,12 +245,31 @@ export default function DashboardScreen() {
                     <Text style={styles.budgetMuted}>/ {formatCurrency(c.budget)}</Text>
                   </Text>
                 </View>
-                <ProgressBar pct={c.pct} color={cat.color} />
+                <ProgressBar pct={c.pct} color={budgetStatusColor(c.pct)} />
               </View>
             );
           })}
         </Card>
       </ScrollView>
+
+      {/* Fixed prominent actions */}
+      <View style={[styles.fixedActions, { paddingBottom: insets.bottom > 0 ? 0 : spacing.sm }]}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('ScanReceipt')}
+          style={styles.scanBtn}
+        >
+          <Ionicons name="scan" size={22} color={colors.white} />
+          <Text style={styles.scanBtnText}>Scan Struk</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('AddTransaction')}
+          style={styles.addBtn}
+        >
+          <Ionicons name="add" size={26} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -286,6 +313,64 @@ const styles = StyleSheet.create({
   summaryValue: { color: colors.white, fontSize: 30, fontWeight: '800', marginTop: 2 },
   summaryValueSm: { fontSize: 20, fontWeight: '800', marginTop: 2 },
   budgetCaption: { color: colors.onPrimary, fontSize: 12, marginTop: 6 },
+  budgetWarn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  budgetWarnText: { color: '#FFE2B0', fontSize: 12, fontWeight: '700' },
+  cashflowSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  whoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xl },
+  whoCard: {
+    width: '47%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  whoAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  whoEmoji: { fontSize: 24 },
+  whoName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  whoSpent: { fontSize: 15, color: colors.text, fontWeight: '800' },
+  fixedActions: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  scanBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: radius.lg,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  scanBtnText: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  addBtn: {
+    width: 56,
+    borderRadius: radius.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
   cashflowRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   cashflowCard: { flex: 1, padding: spacing.md },
   cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },

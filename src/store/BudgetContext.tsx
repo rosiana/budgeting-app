@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useReducer,
 } from 'react';
-import { DEFAULT_CREDIT_CARD } from '../theme';
+import { DEFAULT_CREDIT_CARD, migrateCategory } from '../theme';
 import { SyncConfig, SyncData } from '../sync/sheets';
 import {
   AppData,
@@ -18,6 +18,24 @@ import {
 } from '../types';
 import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
+
+/** Remap any retired category ids (e.g. Listrik/Air/Internet → Utilitas). */
+function migrateTransactions(txs: Transaction[]): Transaction[] {
+  return txs.map((t) => ({
+    ...t,
+    category: migrateCategory(t.category),
+    items: t.items?.map((it) => ({ ...it, category: migrateCategory(it.category) })),
+  }));
+}
+
+function migrateBudgets(b: Partial<Budgets> | undefined): Partial<Budgets> {
+  const out = {} as Record<CategoryId, number>;
+  Object.entries(b ?? {}).forEach(([k, v]) => {
+    const nk = migrateCategory(k);
+    out[nk] = (out[nk] ?? 0) + (v as number);
+  });
+  return out;
+}
 
 const STORAGE_KEY = 'receipt-budget:data:v3';
 const SYNC_KEY = 'receipt-budget:sync:v1';
@@ -71,8 +89,8 @@ function reducer(state: AppData, action: Action): AppData {
       return { ...state, creditCard: { ...state.creditCard, ...action.patch } };
     case 'replaceData':
       return {
-        transactions: action.data.transactions,
-        budgets: { ...DEFAULT_BUDGETS, ...action.data.budgets },
+        transactions: migrateTransactions(action.data.transactions),
+        budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(action.data.budgets) },
         openingBalances: action.data.openingBalances ?? {},
         creditCard: { ...DEFAULT_CREDIT_CARD, ...action.data.creditCard },
       };
@@ -141,8 +159,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
           dispatch({
             type: 'hydrate',
             data: {
-              budgets: { ...DEFAULT_BUDGETS, ...parsed.budgets },
-              transactions: parsed.transactions ?? [],
+              budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(parsed.budgets) },
+              transactions: migrateTransactions(parsed.transactions ?? []),
               openingBalances: parsed.openingBalances ?? {},
               creditCard: { ...DEFAULT_CREDIT_CARD, ...parsed.creditCard },
             },

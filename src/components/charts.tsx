@@ -1,48 +1,45 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, G, Rect, Text as SvgText } from 'react-native-svg';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, G } from 'react-native-svg';
 import { CategorySpend, DayPoint } from '../store/selectors';
 import { categoryOf, colors, fill } from '../theme';
 import { formatCompact } from '../utils/format';
 
-/** Simple weekly bar chart of daily spend. */
-export function WeeklyBars({ data, height = 140 }: { data: DayPoint[]; height?: number }) {
+/** Weekly bar chart of daily spend — tap a bar to select that day. */
+export function WeeklyBars({
+  data,
+  height = 140,
+  selectedIso,
+  onBarPress,
+}: {
+  data: DayPoint[];
+  height?: number;
+  selectedIso?: string | null;
+  onBarPress?: (iso: string) => void;
+}) {
   const max = Math.max(1, ...data.map((d) => d.value));
-  const barW = 26;
-  const gap = 12;
-  const chartW = data.length * (barW + gap);
-  const labelH = 18;
-  const innerH = height - labelH;
-
+  const innerH = height - 22;
   return (
-    <Svg width="100%" height={height} viewBox={`0 0 ${chartW} ${height}`}>
-      {data.map((d, i) => {
-        const h = d.value > 0 ? Math.max(4, (d.value / max) * (innerH - 8)) : 2;
-        const x = i * (barW + gap) + gap / 2;
-        const y = innerH - h;
+    <View style={{ flexDirection: 'row', height, alignItems: 'flex-end' }}>
+      {data.map((d) => {
+        const h = d.value > 0 ? Math.max(4, (d.value / max) * innerH) : 2;
+        const selected = d.iso === selectedIso;
+        const barColor = d.value > 0
+          ? selected ? colors.primaryDark : colors.primary
+          : colors.border;
         return (
-          <G key={d.iso}>
-            <Rect
-              x={x}
-              y={y}
-              width={barW}
-              height={h}
-              rx={6}
-              fill={d.value > 0 ? colors.primary : colors.border}
-            />
-            <SvgText
-              x={x + barW / 2}
-              y={height - 5}
-              fontSize={11}
-              fill={colors.textMuted}
-              textAnchor="middle"
-            >
-              {d.label}
-            </SvgText>
-          </G>
+          <TouchableOpacity
+            key={d.iso}
+            activeOpacity={onBarPress ? 0.6 : 1}
+            onPress={onBarPress ? () => onBarPress(d.iso) : undefined}
+            style={styles.barCol}
+          >
+            <View style={{ width: 24, height: h, borderRadius: 6, backgroundColor: barColor }} />
+            <Text style={[styles.barLabel, selected && styles.barLabelOn]}>{d.label}</Text>
+          </TouchableOpacity>
         );
       })}
-    </Svg>
+    </View>
   );
 }
 
@@ -108,4 +105,7 @@ const styles = StyleSheet.create({
   },
   donutLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   donutValue: { fontSize: 22, color: colors.text, fontWeight: '800' },
+  barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
+  barLabel: { fontSize: 11, color: colors.textMuted, marginTop: 6 },
+  barLabelOn: { color: colors.text, fontWeight: '800' },
 });

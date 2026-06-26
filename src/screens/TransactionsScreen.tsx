@@ -85,6 +85,8 @@ export default function TransactionsScreen() {
         who: tx.who,
         source: tx.source,
         creditCard: tx.creditCard,
+        reimbursable: tx.reimbursable,
+        reimbursed: tx.reimbursed,
         note: tx.note,
         items: tx.items,
         scanned: tx.scanned,
@@ -203,6 +205,14 @@ export default function TransactionsScreen() {
                     <View style={styles.ccBadge}>
                       <Ionicons name="card" size={10} color={colors.primary} />
                       <Text style={styles.ccBadgeText}>KK</Text>
+                    </View>
+                  ) : null}
+                  {item.reimbursable ? (
+                    <View style={[styles.ccBadge, item.reimbursed && { backgroundColor: colors.success + '22' }]}>
+                      <Ionicons name="repeat" size={10} color={item.reimbursed ? colors.success : colors.accent} />
+                      <Text style={[styles.ccBadgeText, { color: item.reimbursed ? colors.success : colors.accent }]}>
+                        {item.reimbursed ? 'Diganti' : 'Reimburse'}
+                      </Text>
                     </View>
                   ) : null}
                   {item.items && item.items.length ? (

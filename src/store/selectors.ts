@@ -20,10 +20,13 @@ export function txForMonth(
 
 const isExpense = (t: Transaction) => t.type !== 'income';
 const isIncome = (t: Transaction) => t.type === 'income';
+// Reimbursable expenses are the company's cost, not the household's — they
+// never count toward spending or budgets.
+const countsAsSpending = (t: Transaction) => isExpense(t) && !t.reimbursable;
 
-/** Total expenses (income is ignored). */
+/** Total expenses (income and reimbursables ignored). */
 export function totalSpent(transactions: Transaction[]): number {
-  return transactions.filter(isExpense).reduce((sum, t) => sum + t.amount, 0);
+  return transactions.filter(countsAsSpending).reduce((sum, t) => sum + t.amount, 0);
 }
 
 export function totalIncome(transactions: Transaction[]): number {
@@ -70,7 +73,7 @@ export function spendByCategory(
   budgets: Budgets
 ): CategorySpend[] {
   const totals = {} as Record<CategoryId, number>;
-  for (const t of transactions) if (isExpense(t)) addToCategoryTotals(totals, t);
+  for (const t of transactions) if (countsAsSpending(t)) addToCategoryTotals(totals, t);
   return CATEGORIES.map((c) => {
     const spent = totals[c.id] ?? 0;
     const budget = budgets[c.id] ?? 0;
@@ -108,7 +111,7 @@ export interface WhoSpend {
 export function spendByWho(transactions: Transaction[]): WhoSpend[] {
   const totals = {} as Record<WhoId, number>;
   for (const t of transactions) {
-    if (!isExpense(t)) continue;
+    if (!countsAsSpending(t)) continue;
     totals[t.who] = (totals[t.who] ?? 0) + t.amount;
   }
   return (Object.keys(totals) as WhoId[])
@@ -127,7 +130,7 @@ export function dailySpend(transactions: Transaction[], days = 7): DayPoint[] {
   const points: DayPoint[] = [];
   const byDate = new Map<string, number>();
   for (const t of transactions) {
-    if (!isExpense(t)) continue;
+    if (!countsAsSpending(t)) continue;
     byDate.set(t.date, (byDate.get(t.date) ?? 0) + t.amount);
   }
   for (let i = days - 1; i >= 0; i--) {
@@ -177,7 +180,11 @@ export function sourceBalances(
   for (const t of transactions) {
     if (isIncome(t)) {
       bal[t.source] = (bal[t.source] ?? 0) + t.amount;
-    } else if (t.creditCard) {
+      continue;
+    }
+    // A reimbursed expense is netted to zero — money went out then came back.
+    if (t.reimbursed) continue;
+    if (t.creditCard) {
       if (isCcSettled(t.date, cc)) settledCc += t.amount;
     } else {
       bal[t.source] = (bal[t.source] ?? 0) - t.amount;
@@ -190,6 +197,17 @@ export function sourceBalances(
 
 export function totalBalance(balances: SourceBalance[]): number {
   return balances.reduce((s, b) => s + b.balance, 0);
+}
+
+/** Reimbursable expenses still awaiting payback from the company. */
+export function pendingReimbursements(transactions: Transaction[]): Transaction[] {
+  return transactions
+    .filter((t) => isExpense(t) && t.reimbursable && !t.reimbursed)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+export function reimbursementOutstanding(transactions: Transaction[]): number {
+  return pendingReimbursements(transactions).reduce((s, t) => s + t.amount, 0);
 }
 
 export interface CreditCardStatus {

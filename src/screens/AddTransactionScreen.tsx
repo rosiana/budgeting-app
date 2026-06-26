@@ -77,6 +77,7 @@ export default function AddTransactionScreen() {
   const [who, setWho] = useState<WhoId>(draft?.who ?? DEFAULT_WHO);
   const [source, setSource] = useState<SourceId>(draft?.source ?? 'bca');
   const [creditCard, setCreditCard] = useState<boolean>(draft?.creditCard ?? false);
+  const [reimbursable, setReimbursable] = useState<boolean>(draft?.reimbursable ?? false);
   const [note, setNote] = useState(draft?.note ?? '');
   const isIncome = type === 'income';
   const [items, setItems] = useState<EditableItem[]>(
@@ -155,6 +156,8 @@ export default function AddTransactionScreen() {
       who,
       source,
       creditCard: !isIncome && creditCard ? true : undefined,
+      reimbursable: !isIncome && reimbursable ? true : undefined,
+      reimbursed: !isIncome && reimbursable ? draft?.reimbursed : undefined,
       note: note.trim() || undefined,
       items: useItems ? cleanedItems : undefined,
       scanned: draft?.scanned,
@@ -373,6 +376,26 @@ export default function AddTransactionScreen() {
             </View>
             <View style={[styles.switchTrack, creditCard && styles.switchTrackOn]}>
               <View style={[styles.switchThumb, creditCard && styles.switchThumbOn]} />
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Reimbursable flag (expense only) */}
+        {!isIncome ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setReimbursable((v) => !v)}
+            style={[styles.ccRow, reimbursable && styles.ccRowOn]}
+          >
+            <Ionicons name="repeat" size={18} color={reimbursable ? colors.primary : colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.ccTitle, reimbursable && { color: colors.primary }]}>Bisa direimburse</Text>
+              <Text style={styles.ccSub}>
+                Diganti perusahaan — tidak masuk anggaran. Tandai lunas di tab Saldo.
+              </Text>
+            </View>
+            <View style={[styles.switchTrack, reimbursable && styles.switchTrackOn]}>
+              <View style={[styles.switchThumb, reimbursable && styles.switchThumbOn]} />
             </View>
           </TouchableOpacity>
         ) : null}

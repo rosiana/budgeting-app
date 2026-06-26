@@ -18,6 +18,8 @@ import { Card, PrimaryButton, SectionTitle } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
+  pendingReimbursements,
+  reimbursementOutstanding,
   sourceBalances,
   totalBalance,
 } from '../store/selectors';
@@ -34,11 +36,15 @@ export default function BalancesScreen() {
     creditCard,
     setOpeningBalance,
     setCreditCard,
+    updateTransaction,
     syncData,
     syncConfig,
     setSyncConfig,
     replaceData,
   } = useBudget();
+
+  const pending = useMemo(() => pendingReimbursements(transactions), [transactions]);
+  const pendingTotal = useMemo(() => reimbursementOutstanding(transactions), [transactions]);
 
   const balances = useMemo(
     () => sourceBalances(transactions, openingBalances, creditCard),
@@ -161,6 +167,34 @@ export default function BalancesScreen() {
           )}
         </Card>
 
+        {/* Pending reimbursements */}
+        {pending.length > 0 ? (
+          <Card style={styles.reimCard}>
+            <View style={styles.ccHead}>
+              <View style={styles.ccTitleRow}>
+                <Ionicons name="repeat" size={18} color={colors.accent} />
+                <Text style={styles.ccTitle}>Menunggu Reimburse</Text>
+              </View>
+              <Text style={styles.reimTotal}>{formatCurrency(pendingTotal)}</Text>
+            </View>
+            {pending.map((t) => (
+              <View key={t.id} style={styles.reimRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reimMerchant} numberOfLines={1}>{t.merchant}</Text>
+                  <Text style={styles.reimMeta}>{formatCurrency(t.amount)} · {formatDateShort(t.date)}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => updateTransaction({ ...t, reimbursed: true })}
+                  style={styles.reimBtn}
+                >
+                  <Ionicons name="checkmark" size={14} color={colors.white} />
+                  <Text style={styles.reimBtnText}>Lunas</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </Card>
+        ) : null}
+
         {/* Per-source balances */}
         <SectionTitle>Per Sumber Dana</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
@@ -228,6 +262,7 @@ export default function BalancesScreen() {
         </Card>
 
         {/* Google Sheet sync */}
+        <View style={{ height: spacing.xl }} />
         <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
         <Card style={{ marginTop: 0 }}>
           <Text style={styles.settingHint}>
@@ -351,6 +386,29 @@ const styles = StyleSheet.create({
   ccPaySrc: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   ccOutstanding: { fontSize: 26, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
   ccDue: { fontSize: 13, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
+  reimCard: { marginBottom: spacing.xl },
+  reimTotal: { fontSize: 16, fontWeight: '800', color: colors.accent },
+  reimRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  reimMerchant: { fontSize: 14, fontWeight: '700', color: colors.text },
+  reimMeta: { fontSize: 12, color: colors.textMuted, marginTop: 1, fontWeight: '600' },
+  reimBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.success,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  reimBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
   srcRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
   srcIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   srcLabel: { fontSize: 15, fontWeight: '700', color: colors.text },

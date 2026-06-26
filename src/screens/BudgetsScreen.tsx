@@ -15,9 +15,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, PrimaryButton, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
-import { categoryOf, colors, fill, radius, spacing } from '../theme';
+import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
 import { CategoryId } from '../types';
-import { currentMonthKey, formatCurrency, formatMonth } from '../utils/format';
+import { currentMonthKey, formatCompact, formatCurrency, formatMonth } from '../utils/format';
 
 export default function BudgetsScreen() {
   const insets = useSafeAreaInsets();
@@ -60,11 +60,11 @@ export default function BudgetsScreen() {
 
         <Card style={styles.summary}>
           <View style={styles.summaryRow}>
-            <SummaryStat label="Anggaran" value={formatCurrency(totalBudget)} />
-            <SummaryStat label="Terpakai" value={formatCurrency(spent)} />
+            <SummaryStat label="Anggaran" value={formatCompact(totalBudget)} />
+            <SummaryStat label="Terpakai" value={formatCompact(spent)} />
             <SummaryStat
               label="Sisa"
-              value={formatCurrency(Math.max(0, totalBudget - spent))}
+              value={formatCompact(Math.max(0, totalBudget - spent))}
               color={totalBudget - spent >= 0 ? colors.success : colors.danger}
             />
           </View>
@@ -95,21 +95,26 @@ export default function BudgetsScreen() {
                   <Ionicons name={cat.icon as any} size={18} color={cat.color} />
                   <Text style={styles.catLabel}>{cat.label}</Text>
                 </View>
-                <Ionicons name="pencil" size={15} color={colors.textMuted} />
+                <Text style={styles.catAmt}>
+                  {formatCompact(c.spent)}
+                  <Text style={styles.catAmtMuted}> / {formatCompact(c.budget)}</Text>
+                </Text>
               </View>
               <View style={{ marginVertical: 8 }}>
-                <ProgressBar pct={c.pct} color={cat.color} height={10} />
+                <ProgressBar pct={c.pct} color={budgetStatusColor(c.pct)} height={10} />
               </View>
-              <View style={styles.catFoot}>
-                <Text style={[styles.catSpent, over && { color: colors.danger }]}>
-                  {formatCurrency(c.spent)} terpakai
-                </Text>
-                <Text style={styles.catBudget}>
-                  {c.budget > 0
-                    ? `sisa ${formatCurrency(Math.max(0, c.budget - c.spent))} dari ${formatCurrency(c.budget)}`
-                    : 'Belum ada batas'}
-                </Text>
-              </View>
+              <Text
+                style={[
+                  styles.catStatus,
+                  { color: c.budget === 0 ? colors.textMuted : budgetStatusColor(c.pct) },
+                ]}
+              >
+                {c.budget === 0
+                  ? 'Belum ada batas'
+                  : over
+                  ? `Lewat ${formatCurrency(c.spent - c.budget)}`
+                  : `Sisa ${formatCurrency(c.budget - c.spent)}`}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -190,12 +195,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.md,
   },
-  catHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  catName: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  catLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
-  catFoot: { flexDirection: 'row', justifyContent: 'space-between' },
-  catSpent: { fontSize: 13, fontWeight: '700', color: colors.text },
-  catBudget: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
+  catHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  catName: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  catLabel: { fontSize: 16, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  catAmt: { fontSize: 14, fontWeight: '800', color: colors.text },
+  catAmtMuted: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
+  catStatus: { fontSize: 13, fontWeight: '700' },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...fill, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {

@@ -169,11 +169,11 @@ function titleCase(s: string): string {
 
 const CATEGORY_HINTS: { category: CategoryId; words: string[] }[] = [
   { category: 'cicilan', words: ['cicilan', 'angsuran', 'kpr', 'installment'] },
-  { category: 'listrik', words: ['listrik', 'pln', 'token listrik'] },
-  { category: 'air', words: ['pdam', 'air minum', 'galon', 'tagihan air'] },
-  { category: 'internet', words: ['internet', 'indihome', 'wifi', 'biznet', 'firstmedia', 'pulsa', 'paket data', 'telkomsel', 'by.u', 'smartfren', 'kuota'] },
-  { category: 'skincare', words: ['skincare', 'facial', 'serum', 'toner', 'sunscreen', 'moisturizer', 'somethinc', 'wardah', 'scarlett', 'azarine'] },
-  { category: 'langganan', words: ['netflix', 'spotify', 'youtube', 'disney', 'vidio', 'wetv', 'iqiyi', 'canva', 'icloud', 'google one', 'langganan', 'subscription'] },
+  { category: 'utilitas', words: ['listrik', 'pln', 'token listrik', 'pdam', 'air minum', 'galon', 'tagihan air', 'internet', 'indihome', 'wifi', 'biznet', 'firstmedia', 'pulsa', 'paket data', 'telkomsel', 'by.u', 'smartfren', 'kuota'] },
+  { category: 'rokok', words: ['rokok', 'sampoerna', 'gudang garam', 'djarum', 'marlboro', 'surya', 'magnum', 'esse', 'bir', 'beer', 'wine', 'anggur', 'alkohol', 'vodka', 'whisky', 'soju'] },
+  { category: 'fashion', words: ['uniqlo', 'zara', 'h&m', 'matahari', 'baju', 'celana', 'kemeja', 'kaos', 'dress', 'sepatu', 'sandal', 'tas', 'fashion', 'pakaian', 'jaket', 'hijab'] },
+  { category: 'skincare', words: ['skincare', 'facial', 'serum', 'toner', 'sunscreen', 'moisturizer', 'somethinc', 'wardah', 'scarlett', 'azarine', 'parfum', 'shampoo', 'bedak', 'lipstik', 'makeup'] },
+  { category: 'langganan', words: ['netflix', 'spotify', 'youtube', 'disney', 'vidio', 'wetv', 'iqiyi', 'canva', 'icloud', 'google one', 'claude', 'chatgpt', 'openai', 'langganan', 'subscription'] },
   { category: 'art', words: ['gaji art', ' art ', 'asisten', 'pembantu', 'helper', 'pengasuh'] },
   { category: 'sekolah', words: ['sekolah', 'spp', 'uang sekolah', 'les', 'bimbel', 'seragam', 'kampus', 'kuliah', 'daycare', 'buku tulis'] },
   { category: 'fun', words: ['tiket', 'bioskop', 'cinema', 'xxi', 'cgv', 'game', 'steam', 'mainan', 'wisata', 'liburan', 'hotel', 'traveloka', 'konser', 'karaoke'] },

@@ -65,7 +65,10 @@ export function Pill({
           style={{ marginRight: 5 }}
         />
       ) : null}
-      <Text style={[styles.pillText, { color: active ? colors.white : colors.text }]}>
+      <Text
+        numberOfLines={1}
+        style={[styles.pillText, { color: active ? colors.white : colors.text }]}
+      >
         {label}
       </Text>
     </TouchableOpacity>
@@ -192,6 +195,7 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: radius.pill,
