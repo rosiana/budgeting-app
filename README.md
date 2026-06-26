@@ -1,4 +1,4 @@
-# Keuangan Kita
+# MoMoney
 
 A cross-platform (iOS + Android) personal budgeting app for **Rizal & Rosi**,
 built with **Expo / React Native + TypeScript**. The UI is in **Bahasa
@@ -71,7 +71,7 @@ ART · Sekolah · Fun · Kebutuhan Rumah · Lainnya
 
 | Concern        | Choice |
 | -------------- | ------ |
-| Framework      | Expo SDK 56, React Native 0.85, React 19, TypeScript |
+| Framework      | Expo SDK 55, React Native 0.83, React 19, TypeScript |
 | Navigation     | React Navigation (bottom tabs + native stack) |
 | On-device OCR  | `@react-native-ml-kit/text-recognition` |
 | Camera / media | `expo-camera`, `expo-image-picker` |

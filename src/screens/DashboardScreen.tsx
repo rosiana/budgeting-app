@@ -65,7 +65,7 @@ export default function DashboardScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.greeting}>{formatMonth(mKey)}</Text>
+        <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
         <Text style={styles.hero}>Ringkasan Bulan Ini</Text>
 
         {/* Balance summary */}
@@ -282,10 +282,10 @@ const styles = StyleSheet.create({
   hero: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
   summaryCard: { backgroundColor: colors.primary, borderColor: colors.primary },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  summaryLabel: { color: '#D9EEE8', fontSize: 13, fontWeight: '600' },
+  summaryLabel: { color: colors.onPrimary, fontSize: 13, fontWeight: '600' },
   summaryValue: { color: colors.white, fontSize: 30, fontWeight: '800', marginTop: 2 },
   summaryValueSm: { fontSize: 20, fontWeight: '800', marginTop: 2 },
-  budgetCaption: { color: '#D9EEE8', fontSize: 12, marginTop: 6 },
+  budgetCaption: { color: colors.onPrimary, fontSize: 12, marginTop: 6 },
   cashflowRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   cashflowCard: { flex: 1, padding: spacing.md },
   cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },

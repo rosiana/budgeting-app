@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Keuangan Kita",
+    "name": "MoMoney",
     "slug": "budgeting-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,19 +12,19 @@
       "bundleIdentifier": "com.receiptbudget.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Kamera dipakai untuk scan struk dan mencatat pengeluaran secara otomatis.",
-        "NSPhotoLibraryUsageDescription": "Akses galeri dipakai untuk memilih foto struk yang ingin di-scan."
+        "NSPhotoLibraryUsageDescription": "Akses galeri dipakai untuk memilih foto struk yang ingin di-scan.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.receiptbudget.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0E7C66",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#B07D56",
+        "foregroundImage": "./assets/adaptive-foreground.png"
       },
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -32,20 +32,42 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-dev-client",
       [
         "expo-camera",
         {
-          "cameraPermission": "Izinkan Keuangan Kita memakai kamera untuk scan struk."
+          "cameraPermission": "Izinkan MoMoney memakai kamera untuk scan struk."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Izinkan Keuangan Kita mengakses galeri untuk memilih foto struk."
+          "photosPermission": "Izinkan MoMoney mengakses galeri untuk memilih foto struk."
         }
       ],
-      "expo-font"
-    ]
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FBF6F0"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          }
+        }
+      ],
+      "./plugins/withDisableScriptSandboxing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b802fb9c-c193-4dbd-8ba9-36a4a47083eb"
+      }
+    }
   }
 }

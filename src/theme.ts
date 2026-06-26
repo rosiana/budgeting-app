@@ -10,19 +10,22 @@ import {
   WhoId,
 } from './types';
 
+// MoMoney — cute pastel palette with a warm caramel "monkey" brown.
 export const colors = {
-  primary: '#0E7C66',
-  primaryDark: '#0A5D4C',
-  primaryLight: '#E3F3EF',
-  accent: '#F4A259',
-  bg: '#F6F8F7',
+  primary: '#B07D56', // warm caramel/mocha
+  primaryDark: '#8E6242', // cocoa, for gradients/pressed
+  primaryLight: '#F4E7DA', // soft latte tint
+  accent: '#F2A99B', // pastel peachy-coral
+  bg: '#FBF6F0', // warm cream
   card: '#FFFFFF',
-  text: '#1B2B27',
-  textMuted: '#6B7C77',
-  border: '#E4EAE8',
-  danger: '#D7544C',
-  success: '#2E9E5B',
+  text: '#4A3A2E', // warm dark brown
+  textMuted: '#A18C7B', // soft taupe
+  border: '#EEE3D8', // warm light
+  danger: '#E08576', // soft coral red
+  success: '#6BB98A', // pastel sage green
   white: '#FFFFFF',
+  /** Light text/caption color for use on the primary brown background. */
+  onPrimary: '#F4E7DA',
 };
 
 export const spacing = {
@@ -35,9 +38,9 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 20,
+  sm: 10,
+  md: 16,
+  lg: 26,
   pill: 999,
 };
 

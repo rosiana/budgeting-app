@@ -1,5 +1,5 @@
 /**
- * Keuangan Kita — Google Apps Script backend
+ * MoMoney — Google Apps Script backend
  * ===========================================
  * Turns a Google Spreadsheet into the sync target for the app.
  *
