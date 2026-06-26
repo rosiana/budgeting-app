@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,7 +22,6 @@ import {
   sourceBalances,
   totalBalance,
 } from '../store/selectors';
-import { pullFromSheet, pushToSheet } from '../sync/sheets';
 import { colors, fill, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
 import { SourceId } from '../types';
 import { formatCurrency, formatDateShort } from '../utils/format';
@@ -37,10 +35,11 @@ export default function BalancesScreen() {
     setOpeningBalance,
     setCreditCard,
     updateTransaction,
-    syncData,
     syncConfig,
     setSyncConfig,
-    replaceData,
+    syncStatus,
+    syncError,
+    syncNow,
   } = useBudget();
 
   const pending = useMemo(() => pendingReimbursements(transactions), [transactions]);
@@ -135,8 +134,6 @@ export default function BalancesScreen() {
   // --- Google Sheet sync ---
   const [url, setUrl] = useState(syncConfig.url);
   const [token, setToken] = useState(syncConfig.token);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
 
   // Pick up the persisted config once it loads from storage.
   useEffect(() => {
@@ -144,48 +141,10 @@ export default function BalancesScreen() {
     setToken(syncConfig.token);
   }, [syncConfig.url, syncConfig.token]);
 
-  const onPush = async () => {
-    setBusy(true);
-    setStatus('Mengirim ke Google Sheet…');
-    setSyncConfig({ url, token });
-    try {
-      const { count } = await pushToSheet({ url, token }, syncData);
-      const at = Date.now();
-      setSyncConfig({ lastSyncedAt: at });
-      setStatus(`Tersinkron — ${count} transaksi terkirim.`);
-    } catch (e: any) {
-      setStatus(`Gagal: ${e.message ?? e}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onPull = () => {
-    Alert.alert(
-      'Tarik dari Sheet',
-      'Ini akan mengganti seluruh data di HP ini dengan data dari Google Sheet. Lanjutkan?',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Tarik & ganti',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            setStatus('Menarik dari Google Sheet…');
-            setSyncConfig({ url, token });
-            try {
-              const data = await pullFromSheet({ url, token });
-              replaceData(data);
-              setStatus(`Berhasil — ${data.transactions.length} transaksi dimuat.`);
-            } catch (e: any) {
-              setStatus(`Gagal: ${e.message ?? e}`);
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]
-    );
+  const saveAndSync = async () => {
+    setSyncConfig({ url: url.trim(), token: token.trim() });
+    // Wait a tick so the new config is in state before syncing.
+    setTimeout(() => syncNow(), 50);
   };
 
   return (
@@ -345,8 +304,8 @@ export default function BalancesScreen() {
         <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
         <Card style={{ marginTop: 0 }}>
           <Text style={styles.settingHint}>
-            Tempel URL Web App (Apps Script) dan token rahasiamu. Data kamu yang
-            jadi acuan — tombol Sinkronkan mengirim semuanya ke Sheet.
+            Setelah URL + token diisi, MoMoney akan **otomatis** sinkron
+            (gabungan dua arah) setiap kali ada perubahan di HP manapun.
           </Text>
 
           <Text style={styles.syncLabel}>URL Web App</Text>
@@ -372,28 +331,43 @@ export default function BalancesScreen() {
             style={styles.syncInput}
           />
 
-          {status ? (
-            <View style={styles.syncStatus}>
-              {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
-              <Text style={styles.syncStatusText}>{status}</Text>
-            </View>
-          ) : syncConfig.lastSyncedAt ? (
-            <Text style={styles.syncMeta}>
-              Terakhir sinkron {formatDateShort(new Date(syncConfig.lastSyncedAt).toISOString().slice(0, 10))}
-            </Text>
-          ) : null}
+          <View style={styles.syncStatus}>
+            {syncStatus === 'syncing' ? (
+              <>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.syncStatusText}>Menyinkronkan…</Text>
+              </>
+            ) : syncStatus === 'error' ? (
+              <>
+                <Ionicons name="warning" size={16} color={colors.danger} />
+                <Text style={[styles.syncStatusText, { color: colors.danger }]} numberOfLines={2}>
+                  Gagal sinkron: {syncError}
+                </Text>
+              </>
+            ) : syncStatus === 'synced' || syncConfig.lastSyncedAt ? (
+              <>
+                <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                <Text style={styles.syncStatusText}>
+                  Tersinkron{syncConfig.lastSyncedAt
+                    ? ` · ${formatDateShort(new Date(syncConfig.lastSyncedAt).toISOString().slice(0, 10))}`
+                    : ''}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="cloud-offline-outline" size={16} color={colors.textMuted} />
+                <Text style={styles.syncStatusText}>Belum tersinkron</Text>
+              </>
+            )}
+          </View>
 
           <View style={{ height: spacing.md }} />
           <PrimaryButton
-            label="Sinkronkan ke Sheet"
-            icon="cloud-upload"
-            onPress={onPush}
-            disabled={busy || !url}
+            label="Simpan & sinkron sekarang"
+            icon="sync"
+            onPress={saveAndSync}
+            disabled={syncStatus === 'syncing' || !url}
           />
-          <TouchableOpacity onPress={onPull} disabled={busy || !url} style={styles.pullBtn}>
-            <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />
-            <Text style={styles.pullText}>Tarik dari Sheet (ganti data lokal)</Text>
-          </TouchableOpacity>
         </Card>
       </ScrollView>
 

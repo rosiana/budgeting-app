@@ -88,8 +88,9 @@ const seedTransactions: Transaction[] = [
 ];
 
 export const SEED_DATA: AppData = {
-  transactions: seedTransactions,
+  transactions: seedTransactions.map((t) => ({ ...t, updatedAt: t.createdAt })),
   budgets: DEFAULT_BUDGETS,
   openingBalances: DEFAULT_OPENING_BALANCES,
   creditCard: DEFAULT_CREDIT_CARD,
+  settingsUpdatedAt: Date.now(),
 };

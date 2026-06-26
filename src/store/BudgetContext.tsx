@@ -5,9 +5,10 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
 } from 'react';
 import { DEFAULT_CREDIT_CARD, migrateCategory, migrateSource } from '../theme';
-import { SyncConfig, SyncData } from '../sync/sheets';
+import { pullFromSheet, syncWithSheet, SyncConfig, SyncData } from '../sync/sheets';
 import {
   AppData,
   Budgets,
@@ -26,6 +27,7 @@ function migrateTransactions(txs: Transaction[]): Transaction[] {
     category: migrateCategory(t.category),
     source: migrateSource(t.source, t.who),
     items: t.items?.map((it) => ({ ...it, category: migrateCategory(it.category) })),
+    updatedAt: t.updatedAt ?? t.createdAt ?? 0,
   }));
 }
 
@@ -68,9 +70,11 @@ const EMPTY: AppData = {
   budgets: DEFAULT_BUDGETS,
   openingBalances: {},
   creditCard: DEFAULT_CREDIT_CARD,
+  settingsUpdatedAt: 0,
 };
 
 function reducer(state: AppData, action: Action): AppData {
+  const now = Date.now();
   switch (action.type) {
     case 'hydrate':
       return action.data;
@@ -80,26 +84,35 @@ function reducer(state: AppData, action: Action): AppData {
       return {
         ...state,
         transactions: state.transactions.map((t) =>
-          t.id === action.tx.id ? action.tx : t
+          t.id === action.tx.id ? { ...action.tx, updatedAt: now } : t
         ),
       };
     case 'deleteTransaction':
+      // Soft delete: keep a tombstone so sync can propagate the removal.
       return {
         ...state,
-        transactions: state.transactions.filter((t) => t.id !== action.id),
+        transactions: state.transactions.map((t) =>
+          t.id === action.id ? { ...t, deleted: true, updatedAt: now } : t
+        ),
       };
     case 'setBudget':
       return {
         ...state,
         budgets: { ...state.budgets, [action.category]: action.amount },
+        settingsUpdatedAt: now,
       };
     case 'setOpeningBalance':
       return {
         ...state,
         openingBalances: { ...state.openingBalances, [action.source]: action.amount },
+        settingsUpdatedAt: now,
       };
     case 'setCreditCard':
-      return { ...state, creditCard: { ...state.creditCard, ...action.patch } };
+      return {
+        ...state,
+        creditCard: { ...state.creditCard, ...action.patch },
+        settingsUpdatedAt: now,
+      };
     case 'replaceData':
       return {
         transactions: migrateTransactions(action.data.transactions),
@@ -112,6 +125,7 @@ function reducer(state: AppData, action: Action): AppData {
             ? { paymentSource: migrateSource(action.data.creditCard.paymentSource, 'rosi') }
             : {}),
         },
+        settingsUpdatedAt: action.data.settingsUpdatedAt ?? state.settingsUpdatedAt,
       };
     default:
       return state;
@@ -134,6 +148,11 @@ interface BudgetContextValue {
   syncData: SyncData;
   syncConfig: SyncConfig;
   setSyncConfig: (patch: Partial<SyncConfig>) => void;
+  /** Sync state for the UI to surface. */
+  syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+  syncError?: string;
+  /** Force a sync right now (no debounce). */
+  syncNow: () => Promise<void>;
   /** Replace all local data (used after pulling from the Sheet). */
   replaceData: (data: SyncData) => void;
 }
@@ -166,6 +185,77 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const [syncStatus, setSyncStatus] = React.useState<
+    'idle' | 'syncing' | 'synced' | 'error'
+  >('idle');
+  const [syncError, setSyncError] = React.useState<string | undefined>();
+  // Ref so the latest snapshot is always available to the debounced effect
+  // without re-running on every state tick.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const syncingRef = useRef(false);
+  const queuedRef = useRef(false);
+
+  const runSync = React.useCallback(
+    async (cfg: SyncConfig) => {
+      if (!cfg.url || !cfg.token) return;
+      if (syncingRef.current) {
+        queuedRef.current = true;
+        return;
+      }
+      syncingRef.current = true;
+      setSyncStatus('syncing');
+      setSyncError(undefined);
+      try {
+        const snapshot: SyncData = {
+          transactions: stateRef.current.transactions,
+          budgets: stateRef.current.budgets,
+          openingBalances: stateRef.current.openingBalances,
+          creditCard: stateRef.current.creditCard,
+          settingsUpdatedAt: stateRef.current.settingsUpdatedAt,
+        };
+        const merged = await syncWithSheet(cfg, snapshot);
+        dispatch({ type: 'replaceData', data: merged });
+        setSyncConfig({ lastSyncedAt: Date.now() });
+        setSyncStatus('synced');
+      } catch (e: any) {
+        setSyncStatus('error');
+        setSyncError(String(e?.message ?? e));
+      } finally {
+        syncingRef.current = false;
+        if (queuedRef.current) {
+          queuedRef.current = false;
+          setTimeout(() => runSync(cfg), 800);
+        }
+      }
+    },
+    [setSyncConfig]
+  );
+
+  const syncNow = React.useCallback(
+    async () => runSync(syncConfig),
+    [runSync, syncConfig]
+  );
+
+  // Auto-sync on every change (debounced), once we're ready and configured.
+  useEffect(() => {
+    if (!ready) return;
+    if (!syncConfig.url || !syncConfig.token) return;
+    const t = setTimeout(() => runSync(syncConfig), 2500);
+    return () => clearTimeout(t);
+  }, [
+    ready,
+    syncConfig,
+    runSync,
+    // Watch the parts of state that can change locally; the effect debounces
+    // so rapid edits collapse into a single sync.
+    state.transactions,
+    state.budgets,
+    state.openingBalances,
+    state.creditCard,
+    state.settingsUpdatedAt,
+  ]);
+
   // Hydrate from disk on mount, seeding on first run.
   useEffect(() => {
     let cancelled = false;
@@ -188,6 +278,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
                   ? { paymentSource: migrateSource(parsed.creditCard.paymentSource, 'rosi') }
                   : {}),
               },
+              settingsUpdatedAt: parsed.settingsUpdatedAt ?? 0,
             },
           });
         } else {
@@ -216,12 +307,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<BudgetContextValue>(
     () => ({
       ready,
-      transactions: state.transactions,
+      // Hide tombstones from UI; sync still carries them in syncData.
+      transactions: state.transactions.filter((t) => !t.deleted),
       budgets: state.budgets,
       openingBalances: state.openingBalances,
       creditCard: state.creditCard,
       addTransaction: (input) => {
-        const tx: Transaction = { ...input, id: uid(), createdAt: Date.now() };
+        const now = Date.now();
+        const tx: Transaction = { ...input, id: uid(), createdAt: now, updatedAt: now };
         dispatch({ type: 'addTransaction', tx });
         return tx;
       },
@@ -232,16 +325,20 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'setOpeningBalance', source, amount }),
       setCreditCard: (patch) => dispatch({ type: 'setCreditCard', patch }),
       syncData: {
-        transactions: state.transactions,
+        transactions: state.transactions, // includes tombstones for sync
         budgets: state.budgets,
         openingBalances: state.openingBalances,
         creditCard: state.creditCard,
+        settingsUpdatedAt: state.settingsUpdatedAt,
       },
       syncConfig,
       setSyncConfig,
       replaceData: (data) => dispatch({ type: 'replaceData', data }),
+      syncStatus,
+      syncError,
+      syncNow,
     }),
-    [ready, state, syncConfig, setSyncConfig]
+    [ready, state, syncConfig, setSyncConfig, syncStatus, syncError, syncNow]
   );
 
   return (

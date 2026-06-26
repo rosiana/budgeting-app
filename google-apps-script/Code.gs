@@ -1,22 +1,28 @@
 /**
- * MoMoney — Google Apps Script backend
- * ===========================================
- * Turns a Google Spreadsheet into the sync target for the app.
+ * MoMoney — Google Apps Script backend (two-way merge sync)
+ * =========================================================
+ *
+ * Both phones can edit freely. On every sync the script merges the incoming
+ * snapshot with what's already in the Sheet:
+ *  - Per transaction id: keep the row with the higher `updatedAt`.
+ *  - Settings (budgets, opening balances, CC config): keep the side with the
+ *    higher `settingsUpdatedAt`.
+ * Deletes are soft (the app sends a `deleted: true` tombstone). The merged
+ * state is written back to the Sheet AND returned to the caller, so both
+ * phones converge.
  *
  * Setup (one time):
- *   1. Create a new Google Sheet (or copy your cashflow file).
- *   2. Extensions ▸ Apps Script. Delete the sample, paste this whole file.
- *   3. Set TOKEN below to any long random secret (also paste it into the app).
- *   4. Deploy ▸ New deployment ▸ type "Web app".
+ *   1. Create a Google Sheet, open Extensions ▸ Apps Script, paste this file.
+ *   2. Set TOKEN below to any long random string (use the same in the app).
+ *   3. Deploy ▸ New deployment ▸ Web app
  *        - Execute as: Me
- *        - Who has access: Anyone   (the token is what protects your data)
- *   5. Copy the Web app URL (ends with /exec) and paste it + the token into the
- *      app's Saldo ▸ Sinkronisasi card.
+ *        - Who has access: Anyone   (the token protects your data)
+ *   4. Copy the /exec URL into the app's Saldo ▸ Sinkronisasi card.
  *
- * The script keeps two tabs, creating them on first sync:
- *   - "Transaksi"  : one row per transaction (flat table you can pivot/chart).
+ * Tabs created on first sync:
+ *   - "Transaksi"  : one row per transaction (flat table you can pivot/chart)
  *   - "Pengaturan" : section | key | value rows for budgets, opening balances,
- *                    and credit-card config.
+ *                    credit-card config, and the settingsUpdatedAt timestamp
  */
 
 var TOKEN = 'GANTI_DENGAN_TOKEN_RAHASIA';
@@ -25,8 +31,11 @@ var TX_SHEET = 'Transaksi';
 var SETTINGS_SHEET = 'Pengaturan';
 var TX_HEADERS = [
   'id', 'type', 'date', 'merchant', 'amount', 'category', 'incomeCategory',
-  'who', 'source', 'creditCard', 'note', 'items', 'scanned', 'createdAt',
+  'who', 'source', 'creditCard', 'reimbursable', 'reimbursed', 'note', 'items',
+  'image', 'scanned', 'deleted', 'createdAt', 'updatedAt',
 ];
+
+// --- Entry points ---------------------------------------------------------
 
 function doGet(e) {
   return guard(e, function () {
@@ -38,12 +47,12 @@ function doPost(e) {
   return guard(e, function () {
     var body = JSON.parse(e.postData.contents || '{}');
     if (body.token !== TOKEN) return json({ ok: false, error: 'bad token' });
-    var count = writeAll(body.data || {});
-    return json({ ok: true, count: count });
+    var incoming = body.data || {};
+    var merged = mergeAndWrite(incoming);
+    return json({ ok: true, data: merged, count: merged.transactions.length });
   });
 }
 
-/** Token check for GET (query param). POST checks inside the body too. */
 function guard(e, fn) {
   try {
     var isPost = e && e.postData;
@@ -70,7 +79,7 @@ function sheet(name) {
   return sh;
 }
 
-// --- Read ------------------------------------------------------------------
+// --- Read existing state --------------------------------------------------
 
 function readAll() {
   return {
@@ -78,6 +87,7 @@ function readAll() {
     budgets: readSettingsSection('budget'),
     openingBalances: readSettingsSection('opening'),
     creditCard: readCreditCard(),
+    settingsUpdatedAt: readSettingsTimestamp(),
   };
 }
 
@@ -101,15 +111,24 @@ function readTransactions() {
       category: t.category || 'lainnya',
       incomeCategory: t.incomeCategory || undefined,
       who: t.who || 'rumah',
-      source: t.source || 'tunai',
-      creditCard: t.creditCard === true || t.creditCard === 'TRUE' || t.creditCard === 'true' || undefined,
+      source: t.source || 'tunai_rosi',
+      creditCard: boolish(t.creditCard) || undefined,
+      reimbursable: boolish(t.reimbursable) || undefined,
+      reimbursed: boolish(t.reimbursed) || undefined,
       note: t.note || undefined,
       items: parseItems(t.items),
-      scanned: t.scanned === true || t.scanned === 'TRUE' || t.scanned === 'true' || undefined,
-      createdAt: Number(t.createdAt) || Date.now(),
+      image: t.image || undefined,
+      scanned: boolish(t.scanned) || undefined,
+      deleted: boolish(t.deleted) || undefined,
+      createdAt: Number(t.createdAt) || 0,
+      updatedAt: Number(t.updatedAt) || Number(t.createdAt) || 0,
     });
   }
   return out;
+}
+
+function boolish(v) {
+  return v === true || v === 'TRUE' || v === 'true';
 }
 
 function parseItems(raw) {
@@ -153,40 +172,100 @@ function readCreditCard() {
   return cc;
 }
 
-// --- Write -----------------------------------------------------------------
+function readSettingsTimestamp() {
+  var sh = sheet(SETTINGS_SHEET);
+  var values = sh.getDataRange().getValues();
+  for (var r = 1; r < values.length; r++) {
+    if (values[r][0] === 'meta' && values[r][1] === 'settingsUpdatedAt') {
+      return Number(values[r][2]) || 0;
+    }
+  }
+  return 0;
+}
 
-function writeAll(data) {
-  var n = writeTransactions(data.transactions || []);
-  writeSettings(data);
-  return n;
+// --- Merge & write --------------------------------------------------------
+
+function mergeAndWrite(incoming) {
+  var existing = readAll();
+
+  // 1) Merge transactions by id, picking the higher updatedAt.
+  var byId = {};
+  (existing.transactions || []).forEach(function (t) { byId[t.id] = t; });
+  (incoming.transactions || []).forEach(function (t) {
+    if (!t || !t.id) return;
+    var ex = byId[t.id];
+    if (!ex || Number(t.updatedAt || 0) >= Number(ex.updatedAt || 0)) {
+      byId[t.id] = t;
+    }
+  });
+  var mergedTx = Object.keys(byId).map(function (k) { return byId[k]; });
+
+  // 2) Merge settings: last-write-wins by settingsUpdatedAt.
+  var existingTs = Number(existing.settingsUpdatedAt) || 0;
+  var incomingTs = Number(incoming.settingsUpdatedAt) || 0;
+  var settings;
+  if (incomingTs >= existingTs) {
+    settings = {
+      budgets: incoming.budgets || existing.budgets || {},
+      openingBalances: incoming.openingBalances || existing.openingBalances || {},
+      creditCard: incoming.creditCard || existing.creditCard || {},
+      settingsUpdatedAt: incomingTs || existingTs,
+    };
+  } else {
+    settings = {
+      budgets: existing.budgets || {},
+      openingBalances: existing.openingBalances || {},
+      creditCard: existing.creditCard || {},
+      settingsUpdatedAt: existingTs,
+    };
+  }
+
+  writeTransactions(mergedTx);
+  writeSettings(settings);
+
+  return {
+    transactions: mergedTx,
+    budgets: settings.budgets,
+    openingBalances: settings.openingBalances,
+    creditCard: settings.creditCard,
+    settingsUpdatedAt: settings.settingsUpdatedAt,
+  };
 }
 
 function writeTransactions(transactions) {
   var sh = sheet(TX_SHEET);
   sh.clearContents();
   sh.getRange(1, 1, 1, TX_HEADERS.length).setValues([TX_HEADERS]);
-  if (!transactions.length) return 0;
+  if (!transactions.length) return;
   var rows = transactions.map(function (t) {
     return [
       t.id, t.type, t.date, t.merchant, t.amount, t.category,
-      t.incomeCategory || '', t.who, t.source, t.creditCard ? true : false,
-      t.note || '', t.items ? JSON.stringify(t.items) : '',
-      t.scanned ? true : false, t.createdAt,
+      t.incomeCategory || '', t.who, t.source,
+      t.creditCard ? true : false,
+      t.reimbursable ? true : false,
+      t.reimbursed ? true : false,
+      t.note || '',
+      t.items ? JSON.stringify(t.items) : '',
+      t.image || '',
+      t.scanned ? true : false,
+      t.deleted ? true : false,
+      t.createdAt || 0,
+      t.updatedAt || t.createdAt || 0,
     ];
   });
   sh.getRange(2, 1, rows.length, TX_HEADERS.length).setValues(rows);
-  return rows.length;
 }
 
-function writeSettings(data) {
+function writeSettings(s) {
   var sh = sheet(SETTINGS_SHEET);
   sh.clearContents();
   var rows = [['section', 'key', 'value']];
-  var budgets = data.budgets || {};
+  var budgets = s.budgets || {};
   Object.keys(budgets).forEach(function (k) { rows.push(['budget', k, budgets[k]]); });
-  var opening = data.openingBalances || {};
+  var opening = s.openingBalances || {};
   Object.keys(opening).forEach(function (k) { rows.push(['opening', k, opening[k]]); });
-  var cc = data.creditCard || {};
+  var cc = s.creditCard || {};
   Object.keys(cc).forEach(function (k) { rows.push(['cc', k, cc[k]]); });
+  rows.push(['meta', 'settingsUpdatedAt', s.settingsUpdatedAt || 0]);
   sh.getRange(1, 1, rows.length, 3).setValues(rows);
 }

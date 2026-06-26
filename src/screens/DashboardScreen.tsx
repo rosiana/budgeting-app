@@ -242,7 +242,9 @@ export default function DashboardScreen() {
                 return (
                   <View key={w.who} style={styles.whoCard}>
                     {person.avatar ? (
-                      <Image source={person.avatar} style={styles.whoAvatarImg} />
+                      <View style={[styles.whoAvatar, { backgroundColor: person.avatarBg ?? person.color + '22' }]}>
+                        <Image source={person.avatar} style={styles.whoAvatarImg} />
+                      </View>
                     ) : (
                       <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
                         <Text style={styles.whoEmoji}>{person.emoji}</Text>
@@ -320,8 +322,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.md,
   },
-  whoAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  whoAvatarImg: { width: 52, height: 52 },
+  whoAvatar: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  whoAvatarImg: { width: 50, height: 50, resizeMode: 'contain' },
   whoEmoji: { fontSize: 26 },
   whoName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
   whoSpent: { fontSize: 15, color: colors.text, fontWeight: '800' },

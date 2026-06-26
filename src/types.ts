@@ -75,6 +75,8 @@ export interface Who {
   emoji: string;
   /** Optional monkey avatar image (require'd asset). */
   avatar?: number;
+  /** Pastel circle behind the avatar. */
+  avatarBg?: string;
 }
 
 /** Who owns a money source. */
@@ -124,6 +126,10 @@ export interface Transaction {
   /** Optional attached photo (local file uri). */
   image?: string;
   createdAt: number;
+  /** Last edit time (ms epoch). Used for last-write-wins merge sync. */
+  updatedAt?: number;
+  /** Soft-delete tombstone; the row is hidden from UI but kept for sync. */
+  deleted?: boolean;
 }
 
 /** Per-category monthly spending limit, keyed by CategoryId. */
@@ -145,6 +151,8 @@ export interface AppData {
   /** Starting balance per money source. */
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;
+  /** Last time settings (budgets/openingBalances/creditCard) were edited. */
+  settingsUpdatedAt: number;
 }
 
 /** Structured result produced by the receipt parser from raw OCR text. */

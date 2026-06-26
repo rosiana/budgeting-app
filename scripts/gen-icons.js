@@ -36,11 +36,14 @@ const PINK_BOW = `
     <circle cx="0" cy="0" r="22" fill="#E76A93"/>
   </g>
 `;
+// Sunglasses pushed up onto the monkey's head (not over the eyes).
 const SUNGLASSES = `
-  <g>
-    <rect x="330" y="472" width="132" height="74" rx="24" fill="#23201E"/>
-    <rect x="562" y="472" width="132" height="74" rx="24" fill="#23201E"/>
-    <rect x="456" y="496" width="112" height="16" rx="8" fill="#23201E"/>
+  <g transform="rotate(-6 512 340)">
+    <rect x="316" y="306" width="148" height="78" rx="28" fill="#23201E"/>
+    <rect x="560" y="306" width="148" height="78" rx="28" fill="#23201E"/>
+    <rect x="450" y="332" width="124" height="18" rx="9" fill="#23201E"/>
+    <ellipse cx="370" cy="334" rx="20" ry="10" fill="#3A3431" opacity="0.7"/>
+    <ellipse cx="618" cy="334" rx="20" ry="10" fill="#3A3431" opacity="0.7"/>
   </g>
 `;
 const LOLLIPOP = `

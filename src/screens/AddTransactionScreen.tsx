@@ -338,30 +338,44 @@ export default function AddTransactionScreen() {
           <Text style={styles.dateText}>{formatDateLong(date)}</Text>
           <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
         </TouchableOpacity>
-        {showDate ? (
-          Platform.OS === 'ios' ? (
-            <View style={styles.iosPicker}>
-              <DateTimePicker
-                value={new Date(`${date}T00:00:00`)}
-                mode="date"
-                display="inline"
-                onChange={(_, d) => d && setDate(toISODate(d))}
-              />
-              <TouchableOpacity onPress={() => setShowDate(false)} style={styles.doneBtn}>
-                <Text style={styles.doneText}>Selesai</Text>
+        {showDate && Platform.OS === 'android' ? (
+          <DateTimePicker
+            value={new Date(`${date}T00:00:00`)}
+            mode="date"
+            display="default"
+            onChange={(e, d) => {
+              setShowDate(false);
+              if (e.type !== 'dismissed' && d) setDate(toISODate(d));
+            }}
+          />
+        ) : null}
+
+        {/* iOS: modal with backdrop. Tap backdrop or pick a date to close. */}
+        {Platform.OS === 'ios' ? (
+          <Modal
+            visible={showDate}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDate(false)}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => setShowDate(false)}
+              style={styles.dateBackdrop}
+            >
+              <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.dateSheet}>
+                <DateTimePicker
+                  value={new Date(`${date}T00:00:00`)}
+                  mode="date"
+                  display="inline"
+                  onChange={(_, d) => {
+                    if (d) setDate(toISODate(d));
+                    setShowDate(false);
+                  }}
+                />
               </TouchableOpacity>
-            </View>
-          ) : (
-            <DateTimePicker
-              value={new Date(`${date}T00:00:00`)}
-              mode="date"
-              display="default"
-              onChange={(e, d) => {
-                setShowDate(false);
-                if (e.type !== 'dismissed' && d) setDate(toISODate(d));
-              }}
-            />
-          )
+            </TouchableOpacity>
+          </Modal>
         ) : null}
 
         {/* Who */}
@@ -552,10 +566,11 @@ export default function AddTransactionScreen() {
                 </View>
                 <TouchableOpacity
                   onPress={() => setPickerFor(idx)}
-                  style={[styles.itemCatBtn, { borderColor: cat.color }]}
+                  activeOpacity={0.8}
+                  style={[styles.chip, { borderColor: cat.color, backgroundColor: cat.color + '18' }]}
                 >
-                  <CatIcon name={cat.icon} set={cat.iconSet} size={13} color={cat.color} />
-                  <Text style={[styles.itemCatText, { color: cat.color }]} numberOfLines={1}>
+                  <CatIcon name={cat.icon} set={cat.iconSet} size={14} color={cat.color} />
+                  <Text style={[styles.chipText, { color: cat.color }]} numberOfLines={1}>
                     {cat.label}
                   </Text>
                   <Ionicons name="chevron-down" size={13} color={cat.color} />
@@ -770,16 +785,19 @@ const styles = StyleSheet.create({
   },
   dateField: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dateText: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '600' },
-  iosPicker: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: spacing.sm,
-    padding: spacing.sm,
+  dateBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
   },
-  doneBtn: { alignSelf: 'flex-end', paddingHorizontal: spacing.md, paddingVertical: 6 },
-  doneText: { color: colors.primary, fontWeight: '800', fontSize: 15 },
+  dateSheet: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    width: '100%',
+  },
   suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   suggestChip: {
     flexDirection: 'row',
@@ -861,17 +879,6 @@ const styles = StyleSheet.create({
   },
   itemRp: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
   itemAmountInput: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text, paddingVertical: 8, marginLeft: 4 },
-  itemCatBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    maxWidth: 160,
-  },
-  itemCatText: { fontSize: 13, fontWeight: '700' },
   itemsSum: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
   deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: spacing.lg, padding: spacing.md },
   deleteText: { color: colors.danger, fontWeight: '700', fontSize: 15 },

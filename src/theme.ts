@@ -132,9 +132,9 @@ export const DEFAULT_CREDIT_CARD = {
 };
 
 export const WHO: Who[] = [
-  { id: 'rosi', label: 'Rosi', color: '#B65BC9', emoji: '🎀', avatar: require('../assets/avatar-rosi.png') },
-  { id: 'rizal', label: 'Rizal', color: '#4C8BF5', emoji: '🕶️', avatar: require('../assets/avatar-rizal.png') },
-  { id: 'nonik', label: 'Nonik', color: '#F4A259', emoji: '🍭', avatar: require('../assets/avatar-nonik.png') },
+  { id: 'rosi', label: 'Rosi', color: '#B65BC9', emoji: '🎀', avatar: require('../assets/avatar-rosi.png'), avatarBg: '#FCE2EC' },
+  { id: 'rizal', label: 'Rizal', color: '#4C8BF5', emoji: '🕶️', avatar: require('../assets/avatar-rizal.png'), avatarBg: '#DDF1E2' },
+  { id: 'nonik', label: 'Nonik', color: '#F4A259', emoji: '🍭', avatar: require('../assets/avatar-nonik.png'), avatarBg: '#FFF1C9' },
   { id: 'rumah', label: 'Rumah', color: '#0E7C66', emoji: '🏠' },
   { id: 'lainnya', label: 'Lainnya', color: '#8A9A95', emoji: '👥' },
 ];
