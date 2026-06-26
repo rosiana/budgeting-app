@@ -2,16 +2,22 @@
 export type CategoryId =
   | 'cicilan' // Cicilan Rumah (house installment)
   | 'utilitas' // Utilitas (electricity + water + internet)
+  | 'transportasi' // Transportasi
   | 'skincare' // Personal Care
   | 'makan' // Makan & Minum (food & beverages)
   | 'langganan' // Langganan (subscriptions)
   | 'art' // ART (asisten rumah tangga / domestic helper)
   | 'sekolah' // Sekolah (school)
-  | 'fun' // Fun (hiburan)
+  | 'fun' // Hobi & Hiburan
   | 'rumah' // Kebutuhan Rumah (household needs)
+  | 'perabot' // Perabot & Peralatan (furniture & appliances)
   | 'fashion' // Fashion
   | 'rokok' // Rokok & Alkohol
+  | 'sedekah' // Sedekah & Hadiah (charity & gifts)
   | 'lainnya'; // Lainnya (others)
+
+/** Which icon font a category's `icon` name comes from. */
+export type IconSet = 'ion' | 'mci';
 
 // Income categories, from the cashflow spreadsheet.
 export type IncomeCategoryId =
@@ -46,7 +52,8 @@ export type SourceId =
 export interface Category {
   id: CategoryId;
   label: string;
-  icon: string; // Ionicons name
+  icon: string; // icon name (Ionicons by default, or MCI when iconSet === 'mci')
+  iconSet?: IconSet;
   color: string;
 }
 
@@ -64,11 +71,15 @@ export interface Who {
   emoji: string;
 }
 
+/** Who owns a money source. 'shared' accounts belong to both. */
+export type SourceOwner = 'rosi' | 'rizal' | 'shared';
+
 export interface Source {
   id: SourceId;
   label: string;
   icon: string;
   color: string;
+  owner: SourceOwner;
 }
 
 export interface LineItem {
@@ -104,6 +115,8 @@ export interface Transaction {
   items?: LineItem[];
   /** Set when the transaction was created from a scanned receipt */
   scanned?: boolean;
+  /** Optional attached photo (local file uri). */
+  image?: string;
   createdAt: number;
 }
 

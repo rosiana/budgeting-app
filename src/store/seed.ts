@@ -7,6 +7,7 @@ import { uid } from '../utils/id';
 export const DEFAULT_BUDGETS: Budgets = {
   cicilan: 2_600_000,
   utilitas: 825_000, // listrik + air + internet
+  transportasi: 700_000,
   skincare: 500_000, // Personal Care
   makan: 1_000_000,
   langganan: 500_000,
@@ -14,8 +15,10 @@ export const DEFAULT_BUDGETS: Budgets = {
   sekolah: 1_500_000,
   fun: 1_000_000,
   rumah: 1_500_000,
+  perabot: 500_000,
   fashion: 500_000,
   rokok: 500_000,
+  sedekah: 500_000,
   lainnya: 1_000_000,
 };
 

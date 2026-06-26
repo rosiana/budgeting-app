@@ -50,7 +50,18 @@ export default function BalancesScreen() {
     () => sourceBalances(transactions, openingBalances, creditCard),
     [transactions, openingBalances, creditCard]
   );
-  const total = totalBalance(balances);
+  const [ownerFilter, setOwnerFilter] = useState<'all' | 'rosi' | 'rizal'>('all');
+  const shownBalances = useMemo(
+    () =>
+      ownerFilter === 'all'
+        ? balances
+        : balances.filter((b) => {
+            const o = sourceOf(b.source).owner;
+            return o === ownerFilter || o === 'shared';
+          }),
+    [balances, ownerFilter]
+  );
+  const total = totalBalance(shownBalances);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
 
   const [editing, setEditing] = useState<SourceId | null>(null);
@@ -141,11 +152,26 @@ export default function BalancesScreen() {
       >
         <Text style={styles.title}>Saldo</Text>
 
+        {/* Owner filter */}
+        <View style={styles.ownerToggle}>
+          {(['all', 'rosi', 'rizal'] as const).map((o) => (
+            <TouchableOpacity
+              key={o}
+              onPress={() => setOwnerFilter(o)}
+              style={[styles.ownerBtn, ownerFilter === o && styles.ownerActive]}
+            >
+              <Text style={[styles.ownerText, ownerFilter === o && styles.ownerTextActive]}>
+                {o === 'all' ? 'Semua' : o === 'rosi' ? '👩 Rosi' : '👨 Rizal'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Total balance */}
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total saldo</Text>
+          <Text style={styles.totalLabel}>Total saldo{ownerFilter !== 'all' ? ` · ${ownerFilter === 'rosi' ? 'Rosi' : 'Rizal'}` : ''}</Text>
           <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
-          <Text style={styles.totalCaption}>di {balances.length} sumber dana</Text>
+          <Text style={styles.totalCaption}>di {shownBalances.length} sumber dana</Text>
         </Card>
 
         {/* Credit card bill */}
@@ -198,7 +224,7 @@ export default function BalancesScreen() {
         {/* Per-source balances */}
         <SectionTitle>Per Sumber Dana</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
-          {balances.map((b, i) => {
+          {shownBalances.map((b, i) => {
             const src = sourceOf(b.source);
             return (
               <TouchableOpacity
@@ -374,7 +400,18 @@ function DayStepper({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
+  ownerToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.border,
+    borderRadius: radius.pill,
+    padding: 3,
+    marginBottom: spacing.lg,
+  },
+  ownerBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+  ownerActive: { backgroundColor: colors.card },
+  ownerText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  ownerTextActive: { color: colors.primary },
   totalCard: { backgroundColor: colors.primary, borderColor: colors.primary, marginBottom: spacing.md },
   totalLabel: { color: colors.onPrimary, fontSize: 13, fontWeight: '600' },
   totalValue: { color: colors.white, fontSize: 32, fontWeight: '800', marginTop: 2 },

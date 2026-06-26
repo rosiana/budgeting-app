@@ -20,6 +20,7 @@ import { recognizeReceipt } from '../ocr/recognize';
 import { RootStackParamList } from '../navigation/types';
 import { colors, fill, radius, spacing } from '../theme';
 import { todayISO } from '../utils/format';
+import { persistImage } from '../utils/image';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'ScanReceipt'>;
 
@@ -41,6 +42,7 @@ export default function ScanReceiptScreen() {
       const category = guessCategory(
         `${parsed.merchant ?? ''} ${parsed.rawText}`
       );
+      const image = await persistImage(uri);
       navigation.replace('AddTransaction', {
         draft: {
           merchant: parsed.merchant,
@@ -48,8 +50,8 @@ export default function ScanReceiptScreen() {
           date: parsed.date ?? todayISO(),
           category,
           who: DEFAULT_WHO,
-          source: 'bca',
           items: parsed.items,
+          image,
           scanned: true,
         },
       });

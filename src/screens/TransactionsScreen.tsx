@@ -12,13 +12,15 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Empty, IconCircle, Pill } from '../components/ui';
+import { BottomActions, Empty, IconCircle, MonthNav, Pill } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
 import {
   CATEGORIES,
   colors,
+  INCOME_CATEGORIES,
+  INCOME_CATEGORY_MAP,
   radius,
   sourceOf,
   spacing,
@@ -26,8 +28,15 @@ import {
   WHO,
   whoOf,
 } from '../theme';
-import { CategoryId, Transaction, WhoId } from '../types';
-import { formatCurrency, formatDateFriendly } from '../utils/format';
+import { CategoryId, LineItem, Transaction, WhoId } from '../types';
+import {
+  currentMonthKey,
+  formatCurrency,
+  formatDateFriendly,
+  formatMonth,
+  monthKey as monthKeyOf,
+  shiftMonth,
+} from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Mode = 'kategori' | 'orang';
@@ -36,33 +45,64 @@ export default function TransactionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { transactions, deleteTransaction } = useBudget();
+  const [month, setMonth] = useState(currentMonthKey());
   const [mode, setMode] = useState<Mode>('kategori');
-  const [catFilter, setCatFilter] = useState<CategoryId | 'all'>('all');
+  const [catFilter, setCatFilter] = useState<string>('all'); // expense or income category id
   const [whoFilter, setWhoFilter] = useState<WhoId | 'all'>('all');
 
+  const monthTx = useMemo(
+    () => transactions.filter((t) => monthKeyOf(t.date) === month),
+    [transactions, month]
+  );
+
+  // The active expense category (for showing per-item portions), if any.
+  const activeCat: CategoryId | null =
+    mode === 'kategori' && catFilter !== 'all' && !(catFilter in INCOME_CATEGORY_MAP)
+      ? (catFilter as CategoryId)
+      : null;
+
   const filtered = useMemo(() => {
-    if (mode === 'kategori') {
-      return catFilter === 'all'
-        ? transactions
-        : transactions.filter((t) => t.category === catFilter);
+    if (mode === 'orang') {
+      return whoFilter === 'all' ? monthTx : monthTx.filter((t) => t.who === whoFilter);
     }
-    return whoFilter === 'all'
-      ? transactions
-      : transactions.filter((t) => t.who === whoFilter);
-  }, [transactions, mode, catFilter, whoFilter]);
+    if (catFilter === 'all') return monthTx;
+    if (catFilter in INCOME_CATEGORY_MAP) {
+      return monthTx.filter((t) => t.type === 'income' && t.incomeCategory === catFilter);
+    }
+    // Expense category: match the transaction's category OR any of its items'.
+    return monthTx.filter(
+      (t) =>
+        t.type !== 'income' &&
+        (t.category === catFilter || t.items?.some((it) => it.category === catFilter))
+    );
+  }, [monthTx, mode, catFilter, whoFilter]);
+
+  // Amount to show for a row — when filtered by a category, an itemized
+  // transaction shows just that category's portion.
+  const rowAmount = (t: Transaction): number => {
+    if (activeCat && t.type !== 'income' && t.items && t.items.length) {
+      const portion = t.items
+        .filter((it) => it.category === activeCat)
+        .reduce((s, it) => s + it.amount, 0);
+      return portion || t.amount;
+    }
+    return t.amount;
+  };
+  const matchingItems = (t: Transaction): LineItem[] =>
+    activeCat && t.items ? t.items.filter((it) => it.category === activeCat) : [];
 
   const sections = useMemo(
     () =>
       groupByDate(filtered).map((g) => ({
         title: formatDateFriendly(g.date),
-        // Net for the day: income adds, expense subtracts.
+        // Net for the day: income adds, expense subtracts (using shown amount).
         subtotal: g.items.reduce(
-          (s, t) => s + (t.type === 'income' ? t.amount : -t.amount),
+          (s, t) => s + (t.type === 'income' ? t.amount : -rowAmount(t)),
           0
         ),
         data: g.items,
       })),
-    [filtered]
+    [filtered, activeCat]
   );
 
   const confirmDelete = (tx: Transaction) => {
@@ -89,6 +129,7 @@ export default function TransactionsScreen() {
         reimbursed: tx.reimbursed,
         note: tx.note,
         items: tx.items,
+        image: tx.image,
         scanned: tx.scanned,
       },
     });
@@ -98,7 +139,16 @@ export default function TransactionsScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>Transaksi</Text>
-        <Text style={styles.count}>{transactions.length} catatan</Text>
+        <Text style={styles.count}>{monthTx.length} bulan ini</Text>
+      </View>
+
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <MonthNav
+          label={formatMonth(month)}
+          onPrev={() => setMonth((m) => shiftMonth(m, -1))}
+          onNext={() => setMonth((m) => shiftMonth(m, 1))}
+          canNext={month < currentMonthKey()}
+        />
       </View>
 
       {/* Mode toggle */}
@@ -116,41 +166,52 @@ export default function TransactionsScreen() {
         ))}
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterRow}
-        contentContainerStyle={{ paddingHorizontal: spacing.lg }}
-      >
-        {mode === 'kategori' ? (
-          <>
-            <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
-            {CATEGORIES.map((c) => (
-              <Pill
-                key={c.id}
-                label={c.label}
-                icon={c.icon as any}
-                color={c.color}
-                active={catFilter === c.id}
-                onPress={() => setCatFilter(c.id)}
-              />
-            ))}
-          </>
-        ) : (
-          <>
-            <Pill label="Semua" active={whoFilter === 'all'} onPress={() => setWhoFilter('all')} />
-            {WHO.map((w) => (
-              <Pill
-                key={w.id}
-                label={w.label}
-                color={w.color}
-                active={whoFilter === w.id}
-                onPress={() => setWhoFilter(w.id)}
-              />
-            ))}
-          </>
-        )}
-      </ScrollView>
+      <View style={styles.filterRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContent}
+        >
+          {mode === 'kategori' ? (
+            <>
+              <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
+              {CATEGORIES.map((c) => (
+                <Pill
+                  key={c.id}
+                  label={c.label}
+                  icon={c.iconSet ? undefined : (c.icon as any)}
+                  color={c.color}
+                  active={catFilter === c.id}
+                  onPress={() => setCatFilter(c.id)}
+                />
+              ))}
+              {INCOME_CATEGORIES.map((c) => (
+                <Pill
+                  key={c.id}
+                  label={`+ ${c.label}`}
+                  icon={c.icon as any}
+                  color={colors.success}
+                  active={catFilter === c.id}
+                  onPress={() => setCatFilter(c.id)}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <Pill label="Semua" active={whoFilter === 'all'} onPress={() => setWhoFilter('all')} />
+              {WHO.map((w) => (
+                <Pill
+                  key={w.id}
+                  label={`${w.emoji} ${w.label}`}
+                  color={w.color}
+                  active={whoFilter === w.id}
+                  onPress={() => setWhoFilter(w.id)}
+                />
+              ))}
+            </>
+          )}
+        </ScrollView>
+      </View>
 
       <SectionList
         sections={sections}
@@ -178,6 +239,9 @@ export default function TransactionsScreen() {
           const person = whoOf(item.who);
           const src = sourceOf(item.source);
           const income = item.type === 'income';
+          const shown = rowAmount(item);
+          const partial = activeCat != null && shown !== item.amount;
+          const itemsForCat = matchingItems(item);
           return (
             <TouchableOpacity
               activeOpacity={0.7}
@@ -185,7 +249,7 @@ export default function TransactionsScreen() {
               onLongPress={() => confirmDelete(item)}
               style={styles.row}
             >
-              <IconCircle icon={vis.icon as any} color={vis.color} />
+              <IconCircle icon={vis.icon} iconSet={vis.iconSet} color={vis.color} />
               <View style={{ flex: 1, marginLeft: spacing.md }}>
                 <View style={styles.rowTop}>
                   <Text style={styles.merchant} numberOfLines={1}>
@@ -193,9 +257,20 @@ export default function TransactionsScreen() {
                   </Text>
                   <Text style={[styles.amount, income && { color: colors.success }]}>
                     {income ? '+' : ''}
-                    {formatCurrency(item.amount)}
+                    {formatCurrency(shown)}
                   </Text>
                 </View>
+                {partial && itemsForCat.length ? (
+                  <View style={styles.itemLines}>
+                    {itemsForCat.map((it, i) => (
+                      <View key={i} style={styles.itemLine}>
+                        <Text style={styles.itemLineDesc} numberOfLines={1}>· {it.description}</Text>
+                        <Text style={styles.itemLineAmt}>{formatCurrency(it.amount)}</Text>
+                      </View>
+                    ))}
+                    <Text style={styles.itemLineTotal}>dari total {formatCurrency(item.amount)}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.rowBottom}>
                   <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
                     <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
@@ -221,6 +296,9 @@ export default function TransactionsScreen() {
                   {item.scanned ? (
                     <Ionicons name="scan" size={12} color={colors.primary} />
                   ) : null}
+                  {item.image ? (
+                    <Ionicons name="image" size={12} color={colors.textMuted} />
+                  ) : null}
                 </View>
               </View>
             </TouchableOpacity>
@@ -228,13 +306,11 @@ export default function TransactionsScreen() {
         }}
       />
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: insets.bottom + 16 }]}
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate('ScanReceipt')}
-      >
-        <Ionicons name="scan" size={26} color={colors.white} />
-      </TouchableOpacity>
+      <BottomActions
+        insetsBottom={insets.bottom}
+        onScan={() => navigation.navigate('ScanReceipt')}
+        onAdd={() => navigation.navigate('AddTransaction')}
+      />
     </View>
   );
 }
@@ -256,7 +332,8 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: colors.card },
   toggleText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
   toggleTextActive: { color: colors.primary },
-  filterRow: { flexGrow: 0, paddingVertical: spacing.sm },
+  filterRow: { height: 52, marginTop: spacing.sm },
+  filterContent: { alignItems: 'center', paddingHorizontal: spacing.lg },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -292,19 +369,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   ccBadgeText: { fontSize: 10, fontWeight: '800', color: colors.primary },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
+  itemLines: { marginTop: 4, marginBottom: 2, gap: 1 },
+  itemLine: { flexDirection: 'row', justifyContent: 'space-between' },
+  itemLineDesc: { flex: 1, fontSize: 12, color: colors.textMuted, marginRight: 8 },
+  itemLineAmt: { fontSize: 12, color: colors.text, fontWeight: '600' },
+  itemLineTotal: { fontSize: 11, color: colors.textMuted, fontStyle: 'italic', marginTop: 1 },
 });

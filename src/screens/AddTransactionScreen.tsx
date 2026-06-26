@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,17 +17,19 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PrimaryButton } from '../components/ui';
+import { CatIcon, PrimaryButton } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
   CATEGORIES,
   categoryOf,
   colors,
+  DEVICE_PERSON,
   fill,
   INCOME_CATEGORIES,
   radius,
-  SOURCES,
+  sourceOf,
+  sourcesForPerson,
   spacing,
   WHO,
 } from '../theme';
@@ -38,6 +43,7 @@ import {
 } from '../types';
 import { formatCurrency, todayISO } from '../utils/format';
 import { uid } from '../utils/id';
+import { persistImage } from '../utils/image';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'AddTransaction'>;
 type Rt = RouteProp<RootStackParamList, 'AddTransaction'>;
@@ -61,10 +67,11 @@ export default function AddTransactionScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const insets = useSafeAreaInsets();
-  const { addTransaction, updateTransaction, deleteTransaction } = useBudget();
+  const { transactions, addTransaction, updateTransaction, deleteTransaction } = useBudget();
 
   const draft = route.params?.draft;
   const isEdit = !!draft?.id;
+  const defaultSource = sourcesForPerson(DEVICE_PERSON)[0].id;
 
   const [type, setType] = useState<TxType>(draft?.type ?? 'expense');
   const [merchant, setMerchant] = useState(draft?.merchant ?? '');
@@ -75,11 +82,54 @@ export default function AddTransactionScreen() {
     draft?.incomeCategory ?? 'gaji'
   );
   const [who, setWho] = useState<WhoId>(draft?.who ?? DEFAULT_WHO);
-  const [source, setSource] = useState<SourceId>(draft?.source ?? 'bca');
+  const [source, setSource] = useState<SourceId>(draft?.source ?? defaultSource);
   const [creditCard, setCreditCard] = useState<boolean>(draft?.creditCard ?? false);
   const [reimbursable, setReimbursable] = useState<boolean>(draft?.reimbursable ?? false);
   const [note, setNote] = useState(draft?.note ?? '');
+  const [image, setImage] = useState<string | undefined>(draft?.image);
   const isIncome = type === 'income';
+
+  // Sources this device's person can pay from (plus the current one when editing).
+  const availableSources = useMemo(() => {
+    const list = sourcesForPerson(DEVICE_PERSON);
+    if (source && !list.some((s) => s.id === source)) return [sourceOf(source), ...list];
+    return list;
+  }, [source]);
+
+  // Autosuggest transaction names from previously used merchants.
+  const nameSuggestions = useMemo(() => {
+    const q = merchant.trim().toLowerCase();
+    if (q.length < 1) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of transactions) {
+      const name = t.merchant?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (key === q || seen.has(key)) continue;
+      if (key.includes(q)) {
+        seen.add(key);
+        out.push(name);
+        if (out.length >= 5) break;
+      }
+    }
+    return out;
+  }, [merchant, transactions]);
+
+  const pickImage = async (fromCamera: boolean) => {
+    const res = fromCamera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
+    if (!res.canceled && res.assets?.[0]?.uri) {
+      setImage(await persistImage(res.assets[0].uri));
+    }
+  };
+  const onAttach = () =>
+    Alert.alert('Lampirkan Foto', undefined, [
+      { text: 'Kamera', onPress: () => pickImage(true) },
+      { text: 'Galeri', onPress: () => pickImage(false) },
+      { text: 'Batal', style: 'cancel' },
+    ]);
   const [items, setItems] = useState<EditableItem[]>(
     (draft?.items ?? []).map((it) => ({
       id: uid(),
@@ -160,6 +210,7 @@ export default function AddTransactionScreen() {
       reimbursed: !isIncome && reimbursable ? draft?.reimbursed : undefined,
       note: note.trim() || undefined,
       items: useItems ? cleanedItems : undefined,
+      image: image || undefined,
       scanned: draft?.scanned,
     };
     if (isEdit && draft?.id) {
@@ -259,6 +310,20 @@ export default function AddTransactionScreen() {
           placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
+        {nameSuggestions.length > 0 ? (
+          <View style={styles.suggestRow}>
+            {nameSuggestions.map((name) => (
+              <TouchableOpacity
+                key={name}
+                style={styles.suggestChip}
+                onPress={() => setMerchant(name)}
+              >
+                <Ionicons name="time-outline" size={12} color={colors.primary} />
+                <Text style={styles.suggestText} numberOfLines={1}>{name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
 
         {/* Date */}
         <Text style={styles.label}>Tanggal</Text>
@@ -293,7 +358,7 @@ export default function AddTransactionScreen() {
         {/* Source */}
         <Text style={styles.label}>Sumber Dana</Text>
         <View style={styles.chipWrap}>
-          {SOURCES.map((s) => {
+          {availableSources.map((s) => {
             const active = source === s.id;
             return (
               <TouchableOpacity
@@ -351,7 +416,7 @@ export default function AddTransactionScreen() {
                     onPress={() => setCategory(c.id)}
                     style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
                   >
-                    <Ionicons name={c.icon as any} size={14} color={c.color} />
+                    <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
                     <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
                   </TouchableOpacity>
                 );
@@ -461,7 +526,7 @@ export default function AddTransactionScreen() {
                   onPress={() => setPickerFor(idx)}
                   style={[styles.itemCatBtn, { borderColor: cat.color }]}
                 >
-                  <Ionicons name={cat.icon as any} size={13} color={cat.color} />
+                  <CatIcon name={cat.icon} set={cat.iconSet} size={13} color={cat.color} />
                   <Text style={[styles.itemCatText, { color: cat.color }]} numberOfLines={1}>
                     {cat.label}
                   </Text>
@@ -489,6 +554,28 @@ export default function AddTransactionScreen() {
           style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
           multiline
         />
+
+        {/* Photo attachment */}
+        <Text style={styles.label}>Foto (opsional)</Text>
+        {image ? (
+          <View style={styles.imageWrap}>
+            <Image source={{ uri: image }} style={styles.imageThumb} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.imageName}>Foto terlampir</Text>
+              <TouchableOpacity onPress={onAttach}>
+                <Text style={styles.imageAction}>Ganti foto</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={() => setImage(undefined)} hitSlop={8}>
+              <Ionicons name="trash-outline" size={20} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={onAttach} style={styles.attachBtn} activeOpacity={0.8}>
+            <Ionicons name="camera-outline" size={20} color={colors.primary} />
+            <Text style={styles.attachText}>Lampirkan foto</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={{ height: spacing.lg }} />
         <PrimaryButton
@@ -523,7 +610,7 @@ export default function AddTransactionScreen() {
                   }}
                   style={[styles.chip, { borderColor: c.color, backgroundColor: c.color + '12' }]}
                 >
-                  <Ionicons name={c.icon as any} size={14} color={c.color} />
+                  <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
                   <Text style={[styles.chipText, { color: c.color }]}>{c.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -653,6 +740,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  suggestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '100%',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  suggestText: { fontSize: 13, fontWeight: '600', color: colors.primaryDark, flexShrink: 1 },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: 14,
+  },
+  attachText: { fontSize: 15, fontWeight: '700', color: colors.primary },
+  imageWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+  },
+  imageThumb: { width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.border },
+  imageName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  imageAction: { fontSize: 13, fontWeight: '600', color: colors.primary, marginTop: 2 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row',

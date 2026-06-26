@@ -170,14 +170,17 @@ function titleCase(s: string): string {
 const CATEGORY_HINTS: { category: CategoryId; words: string[] }[] = [
   { category: 'cicilan', words: ['cicilan', 'angsuran', 'kpr', 'installment'] },
   { category: 'utilitas', words: ['listrik', 'pln', 'token listrik', 'pdam', 'air minum', 'galon', 'tagihan air', 'internet', 'indihome', 'wifi', 'biznet', 'firstmedia', 'pulsa', 'paket data', 'telkomsel', 'by.u', 'smartfren', 'kuota'] },
+  { category: 'transportasi', words: ['grab', 'gojek', 'gocar', 'goride', 'gosend', 'bensin', 'pertamina', 'shell', 'spbu', 'parkir', 'tol', 'e-toll', 'etoll', 'taksi', 'bluebird', 'mrt', 'krl', 'transjakarta', 'busway', 'tiket kereta', 'kai', 'ojek'] },
   { category: 'rokok', words: ['rokok', 'sampoerna', 'gudang garam', 'djarum', 'marlboro', 'surya', 'magnum', 'esse', 'bir', 'beer', 'wine', 'anggur', 'alkohol', 'vodka', 'whisky', 'soju'] },
   { category: 'fashion', words: ['uniqlo', 'zara', 'h&m', 'matahari', 'baju', 'celana', 'kemeja', 'kaos', 'dress', 'sepatu', 'sandal', 'tas', 'fashion', 'pakaian', 'jaket', 'hijab'] },
   { category: 'skincare', words: ['skincare', 'facial', 'serum', 'toner', 'sunscreen', 'moisturizer', 'somethinc', 'wardah', 'scarlett', 'azarine', 'parfum', 'shampoo', 'bedak', 'lipstik', 'makeup'] },
   { category: 'langganan', words: ['netflix', 'spotify', 'youtube', 'disney', 'vidio', 'wetv', 'iqiyi', 'canva', 'icloud', 'google one', 'claude', 'chatgpt', 'openai', 'langganan', 'subscription'] },
   { category: 'art', words: ['gaji art', ' art ', 'asisten', 'pembantu', 'helper', 'pengasuh'] },
   { category: 'sekolah', words: ['sekolah', 'spp', 'uang sekolah', 'les', 'bimbel', 'seragam', 'kampus', 'kuliah', 'daycare', 'buku tulis'] },
-  { category: 'fun', words: ['tiket', 'bioskop', 'cinema', 'xxi', 'cgv', 'game', 'steam', 'mainan', 'wisata', 'liburan', 'hotel', 'traveloka', 'konser', 'karaoke'] },
-  { category: 'rumah', words: ['indomaret', 'alfamart', 'superindo', 'hypermart', 'transmart', 'giant', 'hero', 'ikea', 'informa', 'ace hardware', 'beras', 'minyak', 'sabun', 'deterjen', 'tisu', 'tissue', 'peralatan', 'dapur', 'gas elpiji', 'elpiji'] },
+  { category: 'fun', words: ['tiket', 'bioskop', 'cinema', 'xxi', 'cgv', 'game', 'steam', 'mainan', 'wisata', 'liburan', 'hotel', 'traveloka', 'konser', 'karaoke', 'hobi'] },
+  { category: 'sedekah', words: ['sedekah', 'zakat', 'infaq', 'infak', 'donasi', 'donation', 'sumbangan', 'amal', 'hadiah', 'kado', 'gift'] },
+  { category: 'perabot', words: ['ikea', 'informa', 'ace hardware', 'furniture', 'perabot', 'sofa', 'kasur', 'lemari', 'meja', 'kursi', 'kompor', 'kulkas', 'mesin cuci', 'blender', 'rice cooker', 'kipas', 'ac ', 'elektronik', 'electronic', 'peralatan'] },
+  { category: 'rumah', words: ['indomaret', 'alfamart', 'superindo', 'hypermart', 'transmart', 'giant', 'hero', 'beras', 'minyak', 'sabun', 'deterjen', 'tisu', 'tissue', 'dapur', 'gas elpiji', 'elpiji'] },
   { category: 'makan', words: ['makan', 'resto', 'restaurant', 'cafe', 'kafe', 'kopi', 'coffee', 'warung', 'bakso', 'ayam', 'nasi', 'mie', 'minum', 'gofood', 'grabfood', 'shopeefood', 'snack', 'roti', 'kue', 'susu', 'buah', 'sayur'] },
 ];
 

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import {
   Category,
   CategoryId,
@@ -38,10 +39,11 @@ export const spacing = {
   xxl: 32,
 };
 
+// Unified corner radius (matches the "Tagihan Kartu Kredit" card).
 export const radius = {
-  sm: 10,
+  sm: 16,
   md: 16,
-  lg: 26,
+  lg: 16,
   pill: 999,
 };
 
@@ -55,17 +57,20 @@ export const fill = {
 } as const;
 
 export const CATEGORIES: Category[] = [
-  { id: 'cicilan', label: 'Cicilan Rumah', icon: 'home', color: '#E0567A' },
+  { id: 'cicilan', label: 'KPR', icon: 'home', color: '#E0567A' },
   { id: 'utilitas', label: 'Utilitas', icon: 'flash', color: '#F4A259' },
+  { id: 'transportasi', label: 'Transportasi', icon: 'car', color: '#4C8BF5' },
   { id: 'skincare', label: 'Personal Care', icon: 'sparkles', color: '#B65BC9' },
   { id: 'makan', label: 'Makan & Minum', icon: 'fast-food', color: '#2E9E5B' },
   { id: 'langganan', label: 'Langganan', icon: 'repeat', color: '#7A6BF5' },
   { id: 'art', label: 'ART', icon: 'people', color: '#C9893B' },
   { id: 'sekolah', label: 'Sekolah', icon: 'school', color: '#3FA7D6' },
-  { id: 'fun', label: 'Fun', icon: 'game-controller', color: '#EF6F6C' },
+  { id: 'fun', label: 'Hobi & Hiburan', icon: 'sunglasses', iconSet: 'mci', color: '#EF6F6C' },
   { id: 'rumah', label: 'Kebutuhan Rumah', icon: 'cart', color: '#5AA469' },
+  { id: 'perabot', label: 'Perabot & Peralatan', icon: 'bed', color: '#13A89E' },
   { id: 'fashion', label: 'Fashion', icon: 'shirt', color: '#D6749B' },
   { id: 'rokok', label: 'Rokok & Alkohol', icon: 'wine', color: '#8C6242' },
+  { id: 'sedekah', label: 'Sedekah & Hadiah', icon: 'heart', color: '#EC6F9C' },
   { id: 'lainnya', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
 ];
 
@@ -144,18 +149,18 @@ export function whoOf(id: WhoId): Who {
 }
 
 export const SOURCES: Source[] = [
-  { id: 'bca', label: 'BCA', icon: 'card', color: '#1B4DB1' },
-  { id: 'seabank', label: 'SeaBank', icon: 'card', color: '#E1542B' },
-  { id: 'bsi', label: 'BSI', icon: 'card', color: '#00936B' },
-  { id: 'mandiri', label: 'Mandiri', icon: 'card', color: '#0A3D8F' },
-  { id: 'bni', label: 'BNI', icon: 'card', color: '#E97A1A' },
-  { id: 'ovo', label: 'OVO', icon: 'phone-portrait', color: '#4B2A8A' },
-  { id: 'shopeepay', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D' },
-  { id: 'gopay', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2' },
-  { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F' },
-  { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6' },
-  { id: 'emas', label: 'Emas', icon: 'diamond', color: '#D4A017' },
-  { id: 'tunai', label: 'Tunai', icon: 'cash', color: '#2E9E5B' },
+  { id: 'bca', label: 'BCA', icon: 'card', color: '#1B4DB1', owner: 'rosi' },
+  { id: 'seabank', label: 'SeaBank', icon: 'card', color: '#E1542B', owner: 'rosi' },
+  { id: 'ovo', label: 'OVO', icon: 'phone-portrait', color: '#4B2A8A', owner: 'rosi' },
+  { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F', owner: 'rosi' },
+  { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6', owner: 'rosi' },
+  { id: 'emas', label: 'Emas', icon: 'diamond', color: '#D4A017', owner: 'rosi' },
+  { id: 'bsi', label: 'BSI', icon: 'card', color: '#00936B', owner: 'rizal' },
+  { id: 'mandiri', label: 'Mandiri', icon: 'card', color: '#0A3D8F', owner: 'rizal' },
+  { id: 'bni', label: 'BNI', icon: 'card', color: '#E97A1A', owner: 'rizal' },
+  { id: 'shopeepay', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D', owner: 'shared' },
+  { id: 'gopay', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2', owner: 'shared' },
+  { id: 'tunai', label: 'Tunai', icon: 'cash', color: '#2E9E5B', owner: 'shared' },
 ];
 
 export const SOURCE_MAP: Record<SourceId, Source> = SOURCES.reduce(
@@ -170,12 +175,23 @@ export function sourceOf(id: SourceId): Source {
   return SOURCE_MAP[id] ?? SOURCE_MAP.tunai;
 }
 
+/** Sources a person can pay from: their own accounts plus shared ones. */
+export function sourcesForPerson(person: 'rosi' | 'rizal'): Source[] {
+  return SOURCES.filter((s) => s.owner === person || s.owner === 'shared');
+}
+
+/** The person using this device (Rosi on iOS, Rizal on Android). */
+export const DEVICE_PERSON: 'rosi' | 'rizal' =
+  Platform.OS === 'ios' ? 'rosi' : 'rizal';
+
 /** Display icon/label/color for any transaction, income or expense. */
-export function txVisual(tx: Transaction): { label: string; icon: string; color: string } {
+export function txVisual(
+  tx: Transaction
+): { label: string; icon: string; iconSet?: 'ion' | 'mci'; color: string } {
   if (tx.type === 'income') {
     const c = incomeCategoryOf(tx.incomeCategory ?? 'lainnya_in');
     return { label: c.label, icon: c.icon, color: c.color };
   }
   const c = categoryOf(tx.category);
-  return { label: c.label, icon: c.icon, color: c.color };
+  return { label: c.label, icon: c.icon, iconSet: c.iconSet, color: c.color };
 }

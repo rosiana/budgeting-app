@@ -23,6 +23,7 @@ export interface TransactionDraft {
   reimbursed?: boolean;
   note?: string;
   items?: LineItem[];
+  image?: string;
   scanned?: boolean;
 }
 

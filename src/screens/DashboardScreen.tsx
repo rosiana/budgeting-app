@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryDonut, WeeklyBars } from '../components/charts';
-import { Card, ProgressBar, SectionTitle } from '../components/ui';
+import { BottomActions, CatIcon, Card, ProgressBar, SectionTitle } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
@@ -216,8 +216,10 @@ export default function DashboardScreen() {
                     <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
                       <Text style={styles.whoEmoji}>{person.emoji}</Text>
                     </View>
-                    <Text style={styles.whoName}>{person.label}</Text>
-                    <Text style={styles.whoSpent}>{formatCurrency(w.spent)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.whoName} numberOfLines={1}>{person.label}</Text>
+                      <Text style={styles.whoSpent} numberOfLines={1}>{formatCurrency(w.spent)}</Text>
+                    </View>
                   </View>
                 );
               })}
@@ -237,7 +239,7 @@ export default function DashboardScreen() {
               >
                 <View style={styles.budgetHead}>
                   <View style={styles.budgetName}>
-                    <Ionicons name={cat.icon as any} size={16} color={cat.color} />
+                    <CatIcon name={cat.icon} set={cat.iconSet} size={16} color={cat.color} />
                     <Text style={styles.budgetLabel}>{cat.label}</Text>
                   </View>
                   <Text style={styles.budgetAmt}>
@@ -252,56 +254,15 @@ export default function DashboardScreen() {
         </Card>
       </ScrollView>
 
-      {/* Fixed prominent actions */}
-      <View style={[styles.fixedActions, { paddingBottom: insets.bottom > 0 ? 0 : spacing.sm }]}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('ScanReceipt')}
-          style={styles.scanBtn}
-        >
-          <Ionicons name="scan" size={22} color={colors.white} />
-          <Text style={styles.scanBtnText}>Scan Struk</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('AddTransaction')}
-          style={styles.addBtn}
-        >
-          <Ionicons name="add" size={26} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <BottomActions
+        insetsBottom={insets.bottom}
+        onScan={() => navigation.navigate('ScanReceipt')}
+        onAdd={() => navigation.navigate('AddTransaction')}
+      />
     </View>
   );
 }
 
-function ActionButton({
-  icon,
-  label,
-  onPress,
-  primary,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onPress}
-      style={[styles.action, primary ? styles.actionPrimary : styles.actionGhost]}
-    >
-      <Ionicons
-        name={icon}
-        size={22}
-        color={primary ? colors.white : colors.primary}
-      />
-      <Text style={[styles.actionLabel, { color: primary ? colors.white : colors.primary }]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -332,45 +293,7 @@ const styles = StyleSheet.create({
   whoAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   whoEmoji: { fontSize: 24 },
   whoName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  whoSpent: { fontSize: 15, color: colors.text, fontWeight: '800' },
-  fixedActions: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.md,
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  scanBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: radius.lg,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  scanBtnText: { color: colors.white, fontSize: 16, fontWeight: '800' },
-  addBtn: {
-    width: 56,
-    borderRadius: radius.lg,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
+  whoSpent: { fontSize: 14, color: colors.text, fontWeight: '800', marginTop: 1 },
   cashflowRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   cashflowCard: { flex: 1, padding: spacing.md },
   cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -398,27 +321,8 @@ const styles = StyleSheet.create({
   ccLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
   ccDue: { fontSize: 12, color: colors.textMuted, marginTop: 1, fontWeight: '600' },
   ccAmount: { fontSize: 16, fontWeight: '800', color: colors.primary },
-  actions: { flexDirection: 'row', gap: spacing.md, marginVertical: spacing.xl },
-  action: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: radius.md,
-    gap: 8,
-  },
-  actionPrimary: { backgroundColor: colors.primary },
-  actionGhost: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  actionLabel: { fontSize: 15, fontWeight: '700' },
   weekTotal: { fontSize: 24, fontWeight: '800', color: colors.text },
   weekCaption: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  whoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
-  whoDot: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  whoInitial: { color: colors.white, fontWeight: '800', fontSize: 15 },
-  whoHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  whoLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
-  whoValue: { fontSize: 14, fontWeight: '700', color: colors.text },
   breakdown: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   legend: { flex: 1, gap: spacing.md },
   legendRow: { flexDirection: 'row', alignItems: 'center' },

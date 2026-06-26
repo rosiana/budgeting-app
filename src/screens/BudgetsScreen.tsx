@@ -12,12 +12,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, PrimaryButton, ProgressBar } from '../components/ui';
+import { CatIcon, Card, MonthNav, PrimaryButton, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
 import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
 import { CategoryId } from '../types';
-import { currentMonthKey, formatCompact, formatCurrency, formatMonth } from '../utils/format';
+import { currentMonthKey, formatCompact, formatCurrency, formatMonth, shiftMonth } from '../utils/format';
 
 export default function BudgetsScreen() {
   const insets = useSafeAreaInsets();
@@ -25,7 +25,8 @@ export default function BudgetsScreen() {
   const [editing, setEditing] = useState<CategoryId | null>(null);
   const [draftValue, setDraftValue] = useState('');
 
-  const mKey = currentMonthKey();
+  const [month, setMonth] = useState(currentMonthKey());
+  const mKey = month;
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
   const byCat = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
   const spent = totalSpent(monthTx);
@@ -56,7 +57,14 @@ export default function BudgetsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Anggaran</Text>
-        <Text style={styles.subtitle}>{formatMonth(mKey)}</Text>
+        <View style={{ marginTop: spacing.md }}>
+          <MonthNav
+            label={formatMonth(mKey)}
+            onPrev={() => setMonth((m) => shiftMonth(m, -1))}
+            onNext={() => setMonth((m) => shiftMonth(m, 1))}
+            canNext={mKey < currentMonthKey()}
+          />
+        </View>
 
         <Card style={styles.summary}>
           <View style={styles.summaryRow}>
@@ -92,8 +100,8 @@ export default function BudgetsScreen() {
             >
               <View style={styles.catHead}>
                 <View style={styles.catName}>
-                  <Ionicons name={cat.icon as any} size={18} color={cat.color} />
-                  <Text style={styles.catLabel}>{cat.label}</Text>
+                  <CatIcon name={cat.icon} set={cat.iconSet} size={18} color={cat.color} />
+                  <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
                 </View>
                 <Text style={styles.catAmt}>
                   {formatCompact(c.spent)}

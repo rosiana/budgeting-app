@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
   StyleSheet,
@@ -9,6 +9,25 @@ import {
   ViewStyle,
 } from 'react-native';
 import { colors, radius, spacing } from '../theme';
+import { IconSet } from '../types';
+
+/** Renders a category icon from the right font (Ionicons or MaterialCommunity). */
+export function CatIcon({
+  name,
+  set = 'ion',
+  size,
+  color,
+}: {
+  name: string;
+  set?: IconSet;
+  size: number;
+  color: string;
+}) {
+  if (set === 'mci') {
+    return <MaterialCommunityIcons name={name as any} size={size} color={color} />;
+  }
+  return <Ionicons name={name as any} size={size} color={color} />;
+}
 
 export function Card({
   children,
@@ -132,10 +151,12 @@ export function ProgressBar({
 
 export function IconCircle({
   icon,
+  iconSet = 'ion',
   color,
   size = 40,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
+  iconSet?: IconSet;
   color: string;
   size?: number;
 }) {
@@ -150,7 +171,7 @@ export function IconCircle({
         justifyContent: 'center',
       }}
     >
-      <Ionicons name={icon} size={size * 0.5} color={color} />
+      <CatIcon name={icon} set={iconSet} size={size * 0.5} color={color} />
     </View>
   );
 }
@@ -173,7 +194,111 @@ export function Empty({
   );
 }
 
+/** Fixed bottom action bar: prominent Scan Struk + a Tambah button. */
+export function BottomActions({
+  onScan,
+  onAdd,
+  insetsBottom = 0,
+}: {
+  onScan: () => void;
+  onAdd: () => void;
+  insetsBottom?: number;
+}) {
+  return (
+    <View style={[styles.fixedActions, { paddingBottom: insetsBottom > 0 ? 0 : spacing.sm }]}>
+      <TouchableOpacity activeOpacity={0.85} onPress={onScan} style={styles.scanBtn}>
+        <Ionicons name="scan" size={22} color={colors.white} />
+        <Text style={styles.scanBtnText}>Scan Struk</Text>
+      </TouchableOpacity>
+      <TouchableOpacity activeOpacity={0.85} onPress={onAdd} style={styles.addBtn}>
+        <Ionicons name="add" size={26} color={colors.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/** ‹ Month Year › navigator. */
+export function MonthNav({
+  label,
+  onPrev,
+  onNext,
+  canNext = true,
+}: {
+  label: string;
+  onPrev: () => void;
+  onNext: () => void;
+  canNext?: boolean;
+}) {
+  return (
+    <View style={styles.monthNav}>
+      <TouchableOpacity onPress={onPrev} style={styles.monthArrow} hitSlop={8}>
+        <Ionicons name="chevron-back" size={20} color={colors.primary} />
+      </TouchableOpacity>
+      <Text style={styles.monthLabel}>{label}</Text>
+      <TouchableOpacity
+        onPress={canNext ? onNext : undefined}
+        style={styles.monthArrow}
+        hitSlop={8}
+      >
+        <Ionicons name="chevron-forward" size={20} color={canNext ? colors.primary : colors.border} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  fixedActions: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  scanBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: radius.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  scanBtnText: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  addBtn: {
+    width: 56,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  monthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    marginBottom: spacing.md,
+  },
+  monthArrow: { padding: 4 },
+  monthLabel: { fontSize: 15, fontWeight: '800', color: colors.text },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -185,6 +310,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: spacing.lg,
     marginBottom: spacing.md,
   },
   sectionTitle: {
