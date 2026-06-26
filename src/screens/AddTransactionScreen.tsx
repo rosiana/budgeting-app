@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,7 +42,7 @@ import {
   TxType,
   WhoId,
 } from '../types';
-import { formatCurrency, todayISO } from '../utils/format';
+import { formatCurrency, formatDateLong, toISODate, todayISO } from '../utils/format';
 import { uid } from '../utils/id';
 import { persistImage } from '../utils/image';
 
@@ -87,6 +88,7 @@ export default function AddTransactionScreen() {
   const [reimbursable, setReimbursable] = useState<boolean>(draft?.reimbursable ?? false);
   const [note, setNote] = useState(draft?.note ?? '');
   const [image, setImage] = useState<string | undefined>(draft?.image);
+  const [showDate, setShowDate] = useState(false);
   const isIncome = type === 'income';
 
   // Sources this device's person can pay from (plus the current one when editing).
@@ -327,14 +329,40 @@ export default function AddTransactionScreen() {
 
         {/* Date */}
         <Text style={styles.label}>Tanggal</Text>
-        <TextInput
-          value={date}
-          onChangeText={setDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-          autoCapitalize="none"
-        />
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setShowDate(true)}
+          style={[styles.input, styles.dateField]}
+        >
+          <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+          <Text style={styles.dateText}>{formatDateLong(date)}</Text>
+          <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+        {showDate ? (
+          Platform.OS === 'ios' ? (
+            <View style={styles.iosPicker}>
+              <DateTimePicker
+                value={new Date(`${date}T00:00:00`)}
+                mode="date"
+                display="inline"
+                onChange={(_, d) => d && setDate(toISODate(d))}
+              />
+              <TouchableOpacity onPress={() => setShowDate(false)} style={styles.doneBtn}>
+                <Text style={styles.doneText}>Selesai</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <DateTimePicker
+              value={new Date(`${date}T00:00:00`)}
+              mode="date"
+              display="default"
+              onChange={(e, d) => {
+                setShowDate(false);
+                if (e.type !== 'dismissed' && d) setDate(toISODate(d));
+              }}
+            />
+          )
+        ) : null}
 
         {/* Who */}
         <Text style={styles.label}>Untuk Siapa</Text>
@@ -740,6 +768,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  dateField: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dateText: { flex: 1, fontSize: 16, color: colors.text, fontWeight: '600' },
+  iosPicker: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+  },
+  doneBtn: { alignSelf: 'flex-end', paddingHorizontal: spacing.md, paddingVertical: 6 },
+  doneText: { color: colors.primary, fontWeight: '800', fontSize: 15 },
   suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   suggestChip: {
     flexDirection: 'row',

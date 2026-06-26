@@ -25,14 +25,17 @@ export const DEFAULT_BUDGETS: Budgets = {
 export const DEFAULT_OPENING_BALANCES: Partial<Record<SourceId, number>> = {
   bca: 15_000_000,
   seabank: 5_000_000,
+  ovo: 250_000,
+  shopeepay_rosi: 150_000,
+  gopay_rosi: 120_000,
+  emas: 7_500_000,
+  tunai_rosi: 300_000,
   mandiri: 3_000_000,
   bsi: 2_000_000,
   bni: 1_000_000,
-  ovo: 250_000,
-  shopeepay: 150_000,
-  gopay: 200_000,
-  emas: 7_500_000,
-  tunai: 500_000,
+  shopeepay_rizal: 100_000,
+  gopay_rizal: 80_000,
+  tunai_rizal: 200_000,
 };
 
 function daysAgo(n: number): string {
@@ -74,14 +77,14 @@ const seedTransactions: Transaction[] = [
   { id: uid(), type: 'expense', date: daysAgo(3), merchant: 'SPP Sekolah Nonik', amount: 850_000, category: 'sekolah', who: 'nonik', source: 'bsi', createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(4), merchant: 'IndiHome', amount: 375_000, category: 'utilitas', who: 'rumah', source: 'bca', createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(5), merchant: 'Bioskop XXI', amount: 100_000, category: 'fun', who: 'rizal', source: 'bca', creditCard: true, createdAt: Date.now() },
-  { id: uid(), type: 'expense', date: daysAgo(6), merchant: 'Somethinc', amount: 180_000, category: 'skincare', who: 'rosi', source: 'shopeepay', createdAt: Date.now() },
-  { id: uid(), type: 'expense', date: daysAgo(8), merchant: 'Indomaret', amount: 64_300, category: 'rumah', who: 'rumah', source: 'tunai', createdAt: Date.now() },
+  { id: uid(), type: 'expense', date: daysAgo(6), merchant: 'Somethinc', amount: 180_000, category: 'skincare', who: 'rosi', source: 'shopeepay_rosi', createdAt: Date.now() },
+  { id: uid(), type: 'expense', date: daysAgo(8), merchant: 'Indomaret', amount: 64_300, category: 'rumah', who: 'rumah', source: 'tunai_rosi', createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(10), merchant: 'Netflix', amount: 186_000, category: 'langganan', who: 'rumah', source: 'bca', createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(7), merchant: 'Claude Pro', amount: 320_000, category: 'langganan', who: 'rizal', source: 'bca', creditCard: true, reimbursable: true, createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(9), merchant: 'Uniqlo', amount: 299_000, category: 'fashion', who: 'rosi', source: 'bca', createdAt: Date.now() },
-  { id: uid(), type: 'expense', date: daysAgo(11), merchant: 'Rokok Sampoerna', amount: 38_000, category: 'rokok', who: 'rizal', source: 'tunai', createdAt: Date.now() },
+  { id: uid(), type: 'expense', date: daysAgo(11), merchant: 'Rokok Sampoerna', amount: 38_000, category: 'rokok', who: 'rizal', source: 'tunai_rizal', createdAt: Date.now() },
   { id: uid(), type: 'expense', date: daysAgo(12), merchant: 'PDAM', amount: 48_000, category: 'utilitas', who: 'rumah', source: 'bca', createdAt: Date.now() },
-  { id: uid(), type: 'expense', date: daysAgo(15), merchant: 'Warung Makan Padang', amount: 55_000, category: 'makan', who: 'rizal', source: 'tunai', createdAt: Date.now() },
+  { id: uid(), type: 'expense', date: daysAgo(15), merchant: 'Warung Makan Padang', amount: 55_000, category: 'makan', who: 'rizal', source: 'tunai_rizal', createdAt: Date.now() },
 ];
 
 export const SEED_DATA: AppData = {

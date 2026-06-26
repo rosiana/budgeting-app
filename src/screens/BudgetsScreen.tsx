@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CatIcon, Card, MonthNav, PrimaryButton, ProgressBar } from '../components/ui';
+import { CatIcon, Card, GridBg, MonthNav, PrimaryButton, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
 import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
@@ -48,6 +48,7 @@ export default function BudgetsScreen() {
 
   return (
     <View style={styles.root}>
+      <GridBg />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,

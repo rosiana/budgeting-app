@@ -5,36 +5,45 @@ const sharp = require('sharp');
 
 const C = {
   bg: '#B07D56', // brand caramel
-  earOuter: '#8E6242',
-  earInner: '#F2A99B',
-  head: '#CFA67E',
-  face: '#F2E3CF',
-  cheek: '#F2A99B',
-  muzzle: '#FBF4EA',
-  dark: '#4A3A2E',
+  outline: '#4A3A2E', // thick dark outline
+  head: '#6E5039', // medium brown head
+  face: '#F3E4CC', // cream face & inner ears
+  nose: '#8C6242',
+  noseOutline: '#5A4030',
 };
 
-/** Monkey artwork on a 1024 canvas. bg=null → transparent. scale shrinks the
- *  art around the center (for the Android adaptive safe zone). */
+/** Cute outlined monkey on a 1024 canvas. bg=null → transparent. The outline is
+ *  drawn as a slightly larger dark silhouette behind the fills for a clean,
+ *  even border (matching the provided sticker style). */
 function monkeySvg({ bg, scale = 1 }) {
   const art = `
-    <g transform="translate(512 512) scale(${scale}) translate(-512 -532)">
-      <circle cx="292" cy="372" r="118" fill="${C.earOuter}"/>
-      <circle cx="292" cy="372" r="64" fill="${C.earInner}"/>
-      <circle cx="732" cy="372" r="118" fill="${C.earOuter}"/>
-      <circle cx="732" cy="372" r="64" fill="${C.earInner}"/>
-      <circle cx="512" cy="540" r="300" fill="${C.head}"/>
-      <ellipse cx="512" cy="575" rx="232" ry="242" fill="${C.face}"/>
-      <circle cx="372" cy="632" r="44" fill="${C.cheek}" opacity="0.65"/>
-      <circle cx="652" cy="632" r="44" fill="${C.cheek}" opacity="0.65"/>
-      <circle cx="430" cy="536" r="40" fill="${C.dark}"/>
-      <circle cx="594" cy="536" r="40" fill="${C.dark}"/>
-      <circle cx="444" cy="522" r="13" fill="#FFFFFF"/>
-      <circle cx="608" cy="522" r="13" fill="#FFFFFF"/>
-      <ellipse cx="512" cy="678" rx="120" ry="86" fill="${C.muzzle}"/>
-      <ellipse cx="482" cy="666" rx="12" ry="16" fill="${C.dark}"/>
-      <ellipse cx="542" cy="666" rx="12" ry="16" fill="${C.dark}"/>
-      <path d="M460 706 Q512 748 564 706" stroke="${C.dark}" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <g transform="translate(512 512) scale(${scale}) translate(-512 -520)">
+      <!-- outline silhouette (ears + head) -->
+      <circle cx="252" cy="476" r="130" fill="${C.outline}"/>
+      <circle cx="772" cy="476" r="130" fill="${C.outline}"/>
+      <ellipse cx="512" cy="522" rx="314" ry="284" fill="${C.outline}"/>
+      <!-- ears -->
+      <circle cx="252" cy="476" r="108" fill="${C.head}"/>
+      <circle cx="772" cy="476" r="108" fill="${C.head}"/>
+      <ellipse cx="252" cy="480" rx="54" ry="62" fill="${C.face}"/>
+      <ellipse cx="772" cy="480" rx="54" ry="62" fill="${C.face}"/>
+      <!-- head -->
+      <ellipse cx="512" cy="522" rx="292" ry="262" fill="${C.head}"/>
+      <!-- face -->
+      <path d="M512 318
+        C 624 318 706 360 706 360
+        C 742 470 742 560 700 636
+        C 656 712 588 752 512 752
+        C 436 752 368 712 324 636
+        C 282 560 282 470 318 360
+        C 318 360 400 318 512 318 Z" fill="${C.face}"/>
+      <!-- eyes -->
+      <ellipse cx="430" cy="548" rx="33" ry="42" fill="${C.outline}"/>
+      <ellipse cx="594" cy="548" rx="33" ry="42" fill="${C.outline}"/>
+      <!-- nose -->
+      <ellipse cx="512" cy="650" rx="34" ry="24" fill="${C.nose}" stroke="${C.noseOutline}" stroke-width="6"/>
+      <!-- mouth -->
+      <path d="M474 694 Q512 724 550 694" stroke="${C.outline}" stroke-width="11" fill="none" stroke-linecap="round"/>
     </g>`;
   const background = bg ? `<rect width="1024" height="1024" fill="${bg}"/>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${background}${art}</svg>`;

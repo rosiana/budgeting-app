@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
+  Image,
   StyleSheet,
   Text,
   TextStyle,
@@ -8,8 +9,19 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { colors, radius, spacing } from '../theme';
+import { colors, fill, radius, spacing } from '../theme';
 import { IconSet } from '../types';
+
+/** Subtle tiled brown grid behind a screen's content. */
+export function GridBg() {
+  return (
+    <Image
+      source={require('../../assets/grid-tile.png')}
+      resizeMode="repeat"
+      style={fill}
+    />
+  );
+}
 
 /** Renders a category icon from the right font (Ionicons or MaterialCommunity). */
 export function CatIcon({

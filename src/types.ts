@@ -34,20 +34,24 @@ export type TxType = 'expense' | 'income';
 // Who the expense was for.
 export type WhoId = 'rosi' | 'rizal' | 'nonik' | 'rumah' | 'lainnya';
 
-// Payment / money source.
+// Payment / money source. ShopeePay/GoPay/Tunai are per-person (Rosi & Rizal
+// each have their own separate account).
 export type SourceId =
   | 'bca'
   | 'seabank'
-  | 'bsi'
-  | 'mandiri'
-  | 'bni'
   | 'ovo'
-  | 'shopeepay'
-  | 'gopay'
   | 'bibit'
   | 'ajaib'
   | 'emas'
-  | 'tunai';
+  | 'shopeepay_rosi'
+  | 'gopay_rosi'
+  | 'tunai_rosi'
+  | 'bsi'
+  | 'mandiri'
+  | 'bni'
+  | 'shopeepay_rizal'
+  | 'gopay_rizal'
+  | 'tunai_rizal';
 
 export interface Category {
   id: CategoryId;
@@ -71,8 +75,8 @@ export interface Who {
   emoji: string;
 }
 
-/** Who owns a money source. 'shared' accounts belong to both. */
-export type SourceOwner = 'rosi' | 'rizal' | 'shared';
+/** Who owns a money source. */
+export type SourceOwner = 'rosi' | 'rizal';
 
 export interface Source {
   id: SourceId;

@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomActions, Empty, IconCircle, MonthNav, Pill } from '../components/ui';
+import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
@@ -39,15 +39,16 @@ import {
 } from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-type Mode = 'kategori' | 'orang';
+type Mode = 'pengeluaran' | 'pemasukan' | 'orang';
 
 export default function TransactionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { transactions, deleteTransaction } = useBudget();
   const [month, setMonth] = useState(currentMonthKey());
-  const [mode, setMode] = useState<Mode>('kategori');
-  const [catFilter, setCatFilter] = useState<string>('all'); // expense or income category id
+  const [mode, setMode] = useState<Mode>('pengeluaran');
+  const [catFilter, setCatFilter] = useState<string>('all'); // expense category id
+  const [incFilter, setIncFilter] = useState<string>('all'); // income category id
   const [whoFilter, setWhoFilter] = useState<WhoId | 'all'>('all');
 
   const monthTx = useMemo(
@@ -57,25 +58,23 @@ export default function TransactionsScreen() {
 
   // The active expense category (for showing per-item portions), if any.
   const activeCat: CategoryId | null =
-    mode === 'kategori' && catFilter !== 'all' && !(catFilter in INCOME_CATEGORY_MAP)
-      ? (catFilter as CategoryId)
-      : null;
+    mode === 'pengeluaran' && catFilter !== 'all' ? (catFilter as CategoryId) : null;
 
   const filtered = useMemo(() => {
     if (mode === 'orang') {
       return whoFilter === 'all' ? monthTx : monthTx.filter((t) => t.who === whoFilter);
     }
-    if (catFilter === 'all') return monthTx;
-    if (catFilter in INCOME_CATEGORY_MAP) {
-      return monthTx.filter((t) => t.type === 'income' && t.incomeCategory === catFilter);
+    if (mode === 'pemasukan') {
+      const inc = monthTx.filter((t) => t.type === 'income');
+      return incFilter === 'all' ? inc : inc.filter((t) => t.incomeCategory === incFilter);
     }
-    // Expense category: match the transaction's category OR any of its items'.
-    return monthTx.filter(
-      (t) =>
-        t.type !== 'income' &&
-        (t.category === catFilter || t.items?.some((it) => it.category === catFilter))
+    // Pengeluaran: expenses, optionally by category (matching item categories too).
+    const exp = monthTx.filter((t) => t.type !== 'income');
+    if (catFilter === 'all') return exp;
+    return exp.filter(
+      (t) => t.category === catFilter || t.items?.some((it) => it.category === catFilter)
     );
-  }, [monthTx, mode, catFilter, whoFilter]);
+  }, [monthTx, mode, catFilter, incFilter, whoFilter]);
 
   // Amount to show for a row — when filtered by a category, an itemized
   // transaction shows just that category's portion.
@@ -137,6 +136,7 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.root}>
+      <GridBg />
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>Transaksi</Text>
         <Text style={styles.count}>{monthTx.length} bulan ini</Text>
@@ -151,16 +151,16 @@ export default function TransactionsScreen() {
         />
       </View>
 
-      {/* Mode toggle */}
+      {/* Mode toggle: spending / income / person */}
       <View style={styles.toggle}>
-        {(['kategori', 'orang'] as Mode[]).map((m) => (
+        {(['pengeluaran', 'pemasukan', 'orang'] as Mode[]).map((m) => (
           <TouchableOpacity
             key={m}
             onPress={() => setMode(m)}
             style={[styles.toggleBtn, mode === m && styles.toggleActive]}
           >
-            <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]}>
-              {m === 'kategori' ? 'Kategori' : 'Orang'}
+            <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]} numberOfLines={1}>
+              {m === 'pengeluaran' ? 'Keluar' : m === 'pemasukan' ? 'Masuk' : 'Orang'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -172,7 +172,7 @@ export default function TransactionsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterContent}
         >
-          {mode === 'kategori' ? (
+          {mode === 'pengeluaran' ? (
             <>
               <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
               {CATEGORIES.map((c) => (
@@ -185,14 +185,18 @@ export default function TransactionsScreen() {
                   onPress={() => setCatFilter(c.id)}
                 />
               ))}
+            </>
+          ) : mode === 'pemasukan' ? (
+            <>
+              <Pill label="Semua" active={incFilter === 'all'} onPress={() => setIncFilter('all')} />
               {INCOME_CATEGORIES.map((c) => (
                 <Pill
                   key={c.id}
-                  label={`+ ${c.label}`}
+                  label={c.label}
                   icon={c.icon as any}
                   color={colors.success}
-                  active={catFilter === c.id}
-                  onPress={() => setCatFilter(c.id)}
+                  active={incFilter === c.id}
+                  onPress={() => setIncFilter(c.id)}
                 />
               ))}
             </>

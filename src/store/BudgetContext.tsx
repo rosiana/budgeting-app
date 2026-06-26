@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useReducer,
 } from 'react';
-import { DEFAULT_CREDIT_CARD, migrateCategory } from '../theme';
+import { DEFAULT_CREDIT_CARD, migrateCategory, migrateSource } from '../theme';
 import { SyncConfig, SyncData } from '../sync/sheets';
 import {
   AppData,
@@ -19,11 +19,12 @@ import {
 import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
 
-/** Remap any retired category ids (e.g. Listrik/Air/Internet → Utilitas). */
+/** Remap retired category ids and split per-person sources. */
 function migrateTransactions(txs: Transaction[]): Transaction[] {
   return txs.map((t) => ({
     ...t,
     category: migrateCategory(t.category),
+    source: migrateSource(t.source, t.who),
     items: t.items?.map((it) => ({ ...it, category: migrateCategory(it.category) })),
   }));
 }
@@ -32,6 +33,18 @@ function migrateBudgets(b: Partial<Budgets> | undefined): Partial<Budgets> {
   const out = {} as Record<CategoryId, number>;
   Object.entries(b ?? {}).forEach(([k, v]) => {
     const nk = migrateCategory(k);
+    out[nk] = (out[nk] ?? 0) + (v as number);
+  });
+  return out;
+}
+
+/** Old shared opening-balance keys (shopeepay/gopay/tunai) → Rosi's variant. */
+function migrateOpening(
+  o: Partial<Record<SourceId, number>> | undefined
+): Partial<Record<SourceId, number>> {
+  const out = {} as Record<SourceId, number>;
+  Object.entries(o ?? {}).forEach(([k, v]) => {
+    const nk = migrateSource(k, 'rosi');
     out[nk] = (out[nk] ?? 0) + (v as number);
   });
   return out;
@@ -91,8 +104,14 @@ function reducer(state: AppData, action: Action): AppData {
       return {
         transactions: migrateTransactions(action.data.transactions),
         budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(action.data.budgets) },
-        openingBalances: action.data.openingBalances ?? {},
-        creditCard: { ...DEFAULT_CREDIT_CARD, ...action.data.creditCard },
+        openingBalances: migrateOpening(action.data.openingBalances),
+        creditCard: {
+          ...DEFAULT_CREDIT_CARD,
+          ...action.data.creditCard,
+          ...(action.data.creditCard?.paymentSource
+            ? { paymentSource: migrateSource(action.data.creditCard.paymentSource, 'rosi') }
+            : {}),
+        },
       };
     default:
       return state;
@@ -161,8 +180,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
             data: {
               budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(parsed.budgets) },
               transactions: migrateTransactions(parsed.transactions ?? []),
-              openingBalances: parsed.openingBalances ?? {},
-              creditCard: { ...DEFAULT_CREDIT_CARD, ...parsed.creditCard },
+              openingBalances: migrateOpening(parsed.openingBalances),
+              creditCard: {
+                ...DEFAULT_CREDIT_CARD,
+                ...parsed.creditCard,
+                ...(parsed.creditCard?.paymentSource
+                  ? { paymentSource: migrateSource(parsed.creditCard.paymentSource, 'rosi') }
+                  : {}),
+              },
             },
           });
         } else {

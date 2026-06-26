@@ -149,18 +149,23 @@ export function whoOf(id: WhoId): Who {
 }
 
 export const SOURCES: Source[] = [
+  // Rosi's accounts
   { id: 'bca', label: 'BCA', icon: 'card', color: '#1B4DB1', owner: 'rosi' },
   { id: 'seabank', label: 'SeaBank', icon: 'card', color: '#E1542B', owner: 'rosi' },
   { id: 'ovo', label: 'OVO', icon: 'phone-portrait', color: '#4B2A8A', owner: 'rosi' },
+  { id: 'shopeepay_rosi', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D', owner: 'rosi' },
+  { id: 'gopay_rosi', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2', owner: 'rosi' },
   { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F', owner: 'rosi' },
   { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6', owner: 'rosi' },
   { id: 'emas', label: 'Emas', icon: 'diamond', color: '#D4A017', owner: 'rosi' },
+  { id: 'tunai_rosi', label: 'Tunai', icon: 'cash', color: '#2E9E5B', owner: 'rosi' },
+  // Rizal's accounts
   { id: 'bsi', label: 'BSI', icon: 'card', color: '#00936B', owner: 'rizal' },
   { id: 'mandiri', label: 'Mandiri', icon: 'card', color: '#0A3D8F', owner: 'rizal' },
   { id: 'bni', label: 'BNI', icon: 'card', color: '#E97A1A', owner: 'rizal' },
-  { id: 'shopeepay', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D', owner: 'shared' },
-  { id: 'gopay', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2', owner: 'shared' },
-  { id: 'tunai', label: 'Tunai', icon: 'cash', color: '#2E9E5B', owner: 'shared' },
+  { id: 'shopeepay_rizal', label: 'ShopeePay', icon: 'phone-portrait', color: '#EE4D2D', owner: 'rizal' },
+  { id: 'gopay_rizal', label: 'GoPay', icon: 'phone-portrait', color: '#00AAD2', owner: 'rizal' },
+  { id: 'tunai_rizal', label: 'Tunai', icon: 'cash', color: '#2E9E5B', owner: 'rizal' },
 ];
 
 export const SOURCE_MAP: Record<SourceId, Source> = SOURCES.reduce(
@@ -172,12 +177,22 @@ export const SOURCE_MAP: Record<SourceId, Source> = SOURCES.reduce(
 );
 
 export function sourceOf(id: SourceId): Source {
-  return SOURCE_MAP[id] ?? SOURCE_MAP.tunai;
+  return SOURCE_MAP[id] ?? SOURCE_MAP.tunai_rosi;
 }
 
-/** Sources a person can pay from: their own accounts plus shared ones. */
+/** Sources a person can pay from (their own accounts). */
 export function sourcesForPerson(person: 'rosi' | 'rizal'): Source[] {
-  return SOURCES.filter((s) => s.owner === person || s.owner === 'shared');
+  return SOURCES.filter((s) => s.owner === person);
+}
+
+/** Map an old shared source id to a per-person one, guided by `who` when known. */
+export function migrateSource(id: string, who?: string): SourceId {
+  if (SOURCE_MAP[id as SourceId]) return id as SourceId;
+  const person = who === 'rizal' ? 'rizal' : 'rosi';
+  if (id === 'shopeepay') return `shopeepay_${person}` as SourceId;
+  if (id === 'gopay') return `gopay_${person}` as SourceId;
+  if (id === 'tunai') return `tunai_${person}` as SourceId;
+  return 'bca';
 }
 
 /** The person using this device (Rosi on iOS, Rizal on Android). */

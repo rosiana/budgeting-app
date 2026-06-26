@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, PrimaryButton, SectionTitle } from '../components/ui';
+import { Card, GridBg, PrimaryButton, SectionTitle } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
@@ -24,7 +24,7 @@ import {
   totalBalance,
 } from '../store/selectors';
 import { pullFromSheet, pushToSheet } from '../sync/sheets';
-import { colors, fill, radius, sourceOf, SOURCES, spacing } from '../theme';
+import { colors, fill, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
 import { SourceId } from '../types';
 import { formatCurrency, formatDateShort } from '../utils/format';
 
@@ -55,10 +55,7 @@ export default function BalancesScreen() {
     () =>
       ownerFilter === 'all'
         ? balances
-        : balances.filter((b) => {
-            const o = sourceOf(b.source).owner;
-            return o === ownerFilter || o === 'shared';
-          }),
+        : balances.filter((b) => sourceOf(b.source).owner === ownerFilter),
     [balances, ownerFilter]
   );
   const total = totalBalance(shownBalances);
@@ -142,6 +139,7 @@ export default function BalancesScreen() {
 
   return (
     <View style={styles.root}>
+      <GridBg />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -237,7 +235,7 @@ export default function BalancesScreen() {
                   <Ionicons name={src.icon as any} size={18} color={src.color} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.srcLabel}>{src.label}</Text>
+                  <Text style={styles.srcLabel}>{whoOf(src.owner).emoji} {src.label}</Text>
                   <Text style={styles.srcOpening}>Saldo awal {formatCurrency(openingBalances[b.source] ?? 0)}</Text>
                 </View>
                 <Text style={[styles.srcBalance, b.balance < 0 && { color: colors.danger }]}>
@@ -263,7 +261,7 @@ export default function BalancesScreen() {
                   style={[styles.payChip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
                 >
                   <Ionicons name={s.icon as any} size={14} color={s.color} />
-                  <Text style={[styles.payChipText, active && { color: s.color }]}>{s.label}</Text>
+                  <Text style={[styles.payChipText, active && { color: s.color }]}>{whoOf(s.owner).emoji} {s.label}</Text>
                 </TouchableOpacity>
               );
             })}

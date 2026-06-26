@@ -11,19 +11,29 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CategoryDonut, WeeklyBars } from '../components/charts';
-import { BottomActions, CatIcon, Card, ProgressBar, SectionTitle } from '../components/ui';
+import { BottomActions, CatIcon, Card, GridBg, ProgressBar, SectionTitle } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
   dailySpend,
+  sourceBalances,
   spendByCategory,
   spendByWho,
+  totalBalance,
   totalIncome,
   totalSpent,
   txForMonth,
 } from '../store/selectors';
-import { budgetStatusColor, categoryOf, colors, radius, spacing, whoOf } from '../theme';
+import {
+  budgetStatusColor,
+  categoryOf,
+  colors,
+  DEVICE_PERSON,
+  radius,
+  spacing,
+  whoOf,
+} from '../theme';
 import {
   currentMonthKey,
   formatCurrency,
@@ -36,7 +46,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, creditCard } = useBudget();
+  const { transactions, budgets, creditCard, openingBalances } = useBudget();
+
+  const totalSaldo = useMemo(
+    () => totalBalance(sourceBalances(transactions, openingBalances, creditCard)),
+    [transactions, openingBalances, creditCard]
+  );
+  const userName = whoOf(DEVICE_PERSON).label;
 
   const mKey = currentMonthKey();
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
@@ -49,7 +65,6 @@ export default function DashboardScreen() {
   const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
-  const net = income - spent;
   const week = useMemo(() => dailySpend(transactions, 7), [transactions]);
   const weekTotal = week.reduce((s, d) => s + d.value, 0);
   const remaining = totalBudget - spent;
@@ -61,6 +76,7 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.root}>
+      <GridBg />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -70,7 +86,7 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
-        <Text style={styles.hero}>Ringkasan Bulan Ini</Text>
+        <Text style={styles.hero}>Halo, {userName} 👋</Text>
 
         {/* Balance summary */}
         <Card style={styles.summaryCard}>
@@ -114,7 +130,7 @@ export default function DashboardScreen() {
           </View>
         </Card>
 
-        {/* Cashflow: income vs expense vs net */}
+        {/* Cashflow: income + total balance */}
         <View style={styles.cashflowRow}>
           <Card style={styles.cashflowCard}>
             <View style={styles.cashflowTop}>
@@ -125,13 +141,12 @@ export default function DashboardScreen() {
           </Card>
           <Card style={styles.cashflowCard}>
             <View style={styles.cashflowTop}>
-              <Ionicons name="wallet" size={16} color={net >= 0 ? colors.primary : colors.danger} />
-              <Text style={styles.cashflowLabel}>{net >= 0 ? 'Sisa Bulan Ini' : 'Tekor'}</Text>
+              <Ionicons name="wallet" size={16} color={colors.primary} />
+              <Text style={styles.cashflowLabel}>Total Saldo</Text>
             </View>
-            <Text style={[styles.cashflowValue, { color: net >= 0 ? colors.primary : colors.danger }]}>
-              {net >= 0 ? '' : '-'}{formatCurrency(Math.abs(net))}
+            <Text style={[styles.cashflowValue, { color: colors.primary }]}>
+              {formatCurrency(totalSaldo)}
             </Text>
-            <Text style={styles.cashflowSub}>pemasukan − pengeluaran</Text>
           </Card>
         </View>
 
@@ -192,8 +207,10 @@ export default function DashboardScreen() {
                   return (
                     <View key={c.category} style={styles.legendRow}>
                       <View style={[styles.dot, { backgroundColor: cat.color }]} />
-                      <Text style={styles.legendLabel} numberOfLines={1}>{cat.label}</Text>
-                      <Text style={styles.legendValue}>{formatCurrency(c.spent)}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel} numberOfLines={1}>{cat.label}</Text>
+                        <Text style={styles.legendValue}>{formatCurrency(c.spent)}</Text>
+                      </View>
                     </View>
                   );
                 })}
@@ -216,10 +233,8 @@ export default function DashboardScreen() {
                     <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
                       <Text style={styles.whoEmoji}>{person.emoji}</Text>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.whoName} numberOfLines={1}>{person.label}</Text>
-                      <Text style={styles.whoSpent} numberOfLines={1}>{formatCurrency(w.spent)}</Text>
-                    </View>
+                    <Text style={styles.whoName} numberOfLines={1}>{person.label}</Text>
+                    <Text style={styles.whoSpent} numberOfLines={1}>{formatCurrency(w.spent)}</Text>
                   </View>
                 );
               })}
@@ -281,19 +296,19 @@ const styles = StyleSheet.create({
   whoCard: {
     width: '47%',
     flexGrow: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 6,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  whoAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  whoEmoji: { fontSize: 24 },
+  whoAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  whoEmoji: { fontSize: 26 },
   whoName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  whoSpent: { fontSize: 14, color: colors.text, fontWeight: '800', marginTop: 1 },
+  whoSpent: { fontSize: 15, color: colors.text, fontWeight: '800' },
   cashflowRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   cashflowCard: { flex: 1, padding: spacing.md },
   cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -325,10 +340,10 @@ const styles = StyleSheet.create({
   weekCaption: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
   breakdown: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   legend: { flex: 1, gap: spacing.md },
-  legendRow: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  legendLabel: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '600' },
-  legendValue: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
+  legendRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  dot: { width: 10, height: 10, borderRadius: 5, marginRight: 8, marginTop: 4 },
+  legendLabel: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  legendValue: { fontSize: 15, color: colors.text, fontWeight: '800', marginTop: 1 },
   emptyText: { color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.lg },
   budgetRow: { marginTop: spacing.lg },
   budgetHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },

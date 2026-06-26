@@ -71,6 +71,12 @@ export function formatDateShort(isoDate: string): string {
   return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
 
+/** Full Indonesian date, e.g. "1 Juni 2026". */
+export function formatDateLong(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+
 export function formatDateFriendly(isoDate: string): string {
   if (isoDate === todayISO()) return 'Hari ini';
   const yesterday = new Date();
