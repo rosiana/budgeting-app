@@ -95,12 +95,25 @@ export default function AddTransactionScreen() {
     () => items.reduce((s, it) => s + (toAmount(it.amount) || 0), 0),
     [items]
   );
-  const canSave = merchant.trim().length > 0 && amountValue > 0;
+  // Itemized mode: a basket split across categories. The amount then comes from
+  // the items, and the parent category is auto-derived (no manual pick).
+  const itemized = !isIncome && items.length > 0;
+  const effectiveAmount = itemized ? itemsSum : amountValue;
+  const validItemCount = useMemo(
+    () => items.filter((it) => it.description.trim() && toAmount(it.amount) > 0).length,
+    [items]
+  );
+  const canSave =
+    merchant.trim().length > 0 &&
+    (itemized ? validItemCount > 0 && itemsSum > 0 : amountValue > 0);
 
   const updateItem = (idx: number, patch: Partial<EditableItem>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   const addItem = () =>
     setItems((prev) => [...prev, { id: uid(), description: '', amount: '', category }]);
+  // Convert a simple entry into a basket: seed the first item from what's typed.
+  const startItemizing = () =>
+    setItems([{ id: uid(), description: '', amount: amount || '', category }]);
   const removeItem = (idx: number) =>
     setItems((prev) => prev.filter((_, i) => i !== idx));
 
@@ -113,18 +126,37 @@ export default function AddTransactionScreen() {
         amount: Math.round(toAmount(it.amount)),
         category: it.category,
       }));
+    const useItems = !isIncome && cleanedItems.length > 0;
+
+    // When itemized, amount = sum of items and the parent category is the one
+    // with the biggest item total (used only for the list-row icon; budgets
+    // still split per item).
+    let finalAmount = Math.round(amountValue);
+    let finalCategory = category;
+    if (useItems) {
+      finalAmount = cleanedItems.reduce((s, it) => s + it.amount, 0);
+      const totals = {} as Record<CategoryId, number>;
+      cleanedItems.forEach((it) => {
+        totals[it.category] = (totals[it.category] ?? 0) + it.amount;
+      });
+      finalCategory = cleanedItems.reduce(
+        (best, it) => (totals[it.category] > totals[best] ? it.category : best),
+        cleanedItems[0].category
+      );
+    }
+
     const base = {
       type,
       merchant: merchant.trim(),
-      amount: Math.round(amountValue),
+      amount: finalAmount,
       date,
-      category,
+      category: finalCategory,
       incomeCategory: isIncome ? incomeCategory : undefined,
       who,
       source,
       creditCard: !isIncome && creditCard ? true : undefined,
       note: note.trim() || undefined,
-      items: !isIncome && cleanedItems.length ? cleanedItems : undefined,
+      items: useItems ? cleanedItems : undefined,
       scanned: draft?.scanned,
     };
     if (isEdit && draft?.id) {
@@ -192,24 +224,35 @@ export default function AddTransactionScreen() {
 
         {/* Amount */}
         <Text style={styles.label}>Jumlah</Text>
-        <View style={styles.amountRow}>
-          <Text style={styles.currency}>Rp</Text>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="number-pad"
-            placeholder="0"
-            placeholderTextColor={colors.textMuted}
-            style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
-          />
-        </View>
+        {itemized ? (
+          <>
+            <View style={[styles.amountRow, { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight }]}>
+              <Text style={styles.currency}>Rp</Text>
+              <Text style={styles.amountInput}>{formatCurrency(itemsSum).replace('Rp', '')}</Text>
+              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
+            </View>
+            <Text style={styles.autoHint}>Otomatis dijumlah dari {validItemCount} item di bawah.</Text>
+          </>
+        ) : (
+          <View style={styles.amountRow}>
+            <Text style={styles.currency}>Rp</Text>
+            <TextInput
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor={colors.textMuted}
+              style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
+            />
+          </View>
+        )}
 
-        {/* Merchant / source label */}
-        <Text style={styles.label}>{isIncome ? 'Sumber / Keterangan' : 'Toko / Keterangan'}</Text>
+        {/* Transaction name */}
+        <Text style={styles.label}>Nama Transaksi</Text>
         <TextInput
           value={merchant}
           onChangeText={setMerchant}
-          placeholder={isIncome ? 'mis. Gaji Rizal' : 'mis. Superindo'}
+          placeholder={isIncome ? 'mis. Gaji Rizal' : 'mis. Belanja Indomaret'}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
@@ -263,42 +306,55 @@ export default function AddTransactionScreen() {
           })}
         </View>
 
-        {/* Category */}
-        <Text style={styles.label}>Kategori</Text>
+        {/* Category — hidden when itemized (each item carries its own) */}
         {isIncome ? (
-          <View style={styles.chipWrap}>
-            {INCOME_CATEGORIES.map((c) => {
-              const active = incomeCategory === c.id;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  activeOpacity={0.8}
-                  onPress={() => setIncomeCategory(c.id)}
-                  style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-                >
-                  <Ionicons name={c.icon as any} size={14} color={c.color} />
-                  <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <>
+            <Text style={styles.label}>Kategori</Text>
+            <View style={styles.chipWrap}>
+              {INCOME_CATEGORIES.map((c) => {
+                const active = incomeCategory === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    activeOpacity={0.8}
+                    onPress={() => setIncomeCategory(c.id)}
+                    style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                  >
+                    <Ionicons name={c.icon as any} size={14} color={c.color} />
+                    <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : itemized ? (
+          <>
+            <Text style={styles.label}>Kategori</Text>
+            <View style={styles.catNote}>
+              <Ionicons name="pricetags" size={15} color={colors.primary} />
+              <Text style={styles.catNoteText}>Diatur per item di bawah.</Text>
+            </View>
+          </>
         ) : (
-          <View style={styles.chipWrap}>
-            {CATEGORIES.map((c) => {
-              const active = category === c.id;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  activeOpacity={0.8}
-                  onPress={() => setCategory(c.id)}
-                  style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-                >
-                  <Ionicons name={c.icon as any} size={14} color={c.color} />
-                  <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <>
+            <Text style={styles.label}>Kategori</Text>
+            <View style={styles.chipWrap}>
+              {CATEGORIES.map((c) => {
+                const active = category === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    activeOpacity={0.8}
+                    onPress={() => setCategory(c.id)}
+                    style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                  >
+                    <Ionicons name={c.icon as any} size={14} color={c.color} />
+                    <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
 
         {/* Credit-card flag (expense only) */}
@@ -321,8 +377,22 @@ export default function AddTransactionScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Per-item breakdown with per-item categories (expense only) */}
-        {!isIncome ? (
+        {/* Per-item breakdown (expense only) */}
+        {!isIncome && !itemized ? (
+          <TouchableOpacity onPress={startItemizing} style={styles.splitBtn} activeOpacity={0.8}>
+            <Ionicons name="git-branch-outline" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.splitTitle}>Pecah jadi beberapa item</Text>
+              <Text style={styles.splitSub}>
+                Buat belanja campur — mis. Indomaret: telur, sabun, rokok. Tiap
+                item punya kategorinya sendiri.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
+
+        {!isIncome && itemized ? (
         <>
         <View style={styles.itemsHeader}>
           <Text style={[styles.label, { marginTop: 0 }]}>Rincian Item</Text>
@@ -332,8 +402,8 @@ export default function AddTransactionScreen() {
           </TouchableOpacity>
         </View>
         <Text style={styles.itemsHint}>
-          Tiap item bisa punya kategori sendiri. Berguna saat satu struk berisi
-          beberapa kategori.
+          Tiap item punya kategori sendiri. Jumlah transaksi otomatis = total item.
+          Hapus semua item untuk kembali ke satu kategori.
         </Text>
 
         {items.map((it, idx) => {
@@ -379,14 +449,10 @@ export default function AddTransactionScreen() {
           );
         })}
 
-        {items.length > 0 ? (
-          <Text style={styles.itemsSum}>
-            Total item: {formatCurrency(itemsSum)}
-            {amountValue > 0 && Math.abs(itemsSum - amountValue) > 0.5
-              ? `  •  beda ${formatCurrency(Math.abs(amountValue - itemsSum))} dari jumlah`
-              : ''}
-          </Text>
-        ) : null}
+        <View style={styles.itemsTotalRow}>
+          <Text style={styles.itemsTotalLabel}>Jumlah transaksi</Text>
+          <Text style={styles.itemsTotalValue}>{formatCurrency(itemsSum)}</Text>
+        </View>
         </>
         ) : null}
 
@@ -519,6 +585,41 @@ const styles = StyleSheet.create({
   },
   currency: { fontSize: 26, fontWeight: '800', color: colors.textMuted },
   amountInput: { flex: 1, fontSize: 30, fontWeight: '800', color: colors.text, paddingVertical: spacing.md, marginLeft: 6 },
+  autoHint: { fontSize: 12, color: colors.textMuted, marginTop: 6, fontWeight: '600' },
+  catNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 12,
+  },
+  catNoteText: { fontSize: 13, color: colors.primaryDark, fontWeight: '600' },
+  splitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  splitTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  splitSub: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
+  itemsTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  itemsTotalLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  itemsTotalValue: { fontSize: 16, fontWeight: '800', color: colors.primary },
   input: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
