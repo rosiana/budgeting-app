@@ -3,6 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,13 +11,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CategoryDonut, WeeklyBars } from '../components/charts';
+import { BalanceLineChart, CategoryDonut, MonthPoint } from '../components/charts';
 import { BottomActions, CatIcon, Card, GridBg, ProgressBar, SectionTitle } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
-  dailySpend,
   sourceBalances,
   spendByCategory,
   spendByWho,
@@ -65,14 +65,34 @@ export default function DashboardScreen() {
   const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
-  const week = useMemo(() => dailySpend(transactions, 7), [transactions]);
-  const weekTotal = week.reduce((s, d) => s + d.value, 0);
   const remaining = totalBudget - spent;
   const topCats = byCat.filter((c) => c.spent > 0).slice(0, 4);
+  // Anggaran preview: top 5 categories by how full the budget is.
+  const budgetList = useMemo(
+    () => [...byCat].sort((a, b) => b.pct - a.pct).slice(0, 5),
+    [byCat]
+  );
   const budgetPct = totalBudget > 0 ? spent / totalBudget : 0;
   const filledCats = byCat.filter((c) => c.budget > 0 && c.spent >= c.budget);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const selected = week.find((d) => d.iso === selectedDay) ?? null;
+
+  // Grafik Saldo: dummy 12-month balance series, anchored to the current total.
+  const balanceSeries = useMemo<MonthPoint[]>(() => {
+    const factors = [0.55, 0.62, 0.58, 0.7, 0.66, 0.75, 0.82, 0.78, 0.9, 0.86, 0.97, 0.93];
+    const short = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const now = new Date();
+    const idx = now.getMonth();
+    const norm = factors[idx] || 1;
+    const year = now.getFullYear();
+    return factors.map((f, i) => ({
+      key: `${year}-${String(i + 1).padStart(2, '0')}`,
+      label: short[i],
+      value: Math.max(0, Math.round(totalSaldo * (f / norm))),
+    }));
+  }, [totalSaldo]);
+  const [selMonth, setSelMonth] = useState<string | null>(null);
+  const activeKey = selMonth ?? mKey;
+  const activePoint =
+    balanceSeries.find((p) => p.key === activeKey) ?? balanceSeries[balanceSeries.length - 1];
 
   return (
     <View style={styles.root}>
@@ -163,34 +183,25 @@ export default function DashboardScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.ccLabel}>Tagihan Kartu Kredit</Text>
               <Text style={styles.ccDue}>
-                {formatCurrency(cc.dueNext)} jatuh tempo {formatDateShort(cc.nextDue)}
+                Jatuh tempo {formatDateShort(cc.nextDue)}
               </Text>
             </View>
             <Text style={styles.ccAmount}>{formatCurrency(cc.outstanding)}</Text>
           </TouchableOpacity>
         ) : null}
 
-        {/* Weekly trend */}
-        <SectionTitle>7 Hari Terakhir</SectionTitle>
+        {/* Balance trend over the year */}
+        <SectionTitle>Grafik Saldo</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
-          {selected ? (
-            <>
-              <Text style={styles.weekTotal}>{formatCurrency(selected.value)}</Text>
-              <Text style={styles.weekCaption}>
-                pengeluaran {formatDateShort(selected.iso)} · ketuk lagi untuk total minggu
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.weekTotal}>{formatCurrency(weekTotal)}</Text>
-              <Text style={styles.weekCaption}>pengeluaran minggu ini · ketuk batang untuk lihat harian</Text>
-            </>
-          )}
+          <Text style={styles.weekTotal}>{formatCurrency(activePoint.value)}</Text>
+          <Text style={styles.weekCaption}>
+            total saldo {formatMonth(activeKey)} · ketuk titik bulan
+          </Text>
           <View style={{ marginTop: spacing.md }}>
-            <WeeklyBars
-              data={week}
-              selectedIso={selectedDay}
-              onBarPress={(iso) => setSelectedDay((cur) => (cur === iso ? null : iso))}
+            <BalanceLineChart
+              data={balanceSeries}
+              selectedKey={activeKey}
+              onSelect={(k) => setSelMonth(k)}
             />
           </View>
         </Card>
@@ -230,9 +241,13 @@ export default function DashboardScreen() {
                 const person = whoOf(w.who);
                 return (
                   <View key={w.who} style={styles.whoCard}>
-                    <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
-                      <Text style={styles.whoEmoji}>{person.emoji}</Text>
-                    </View>
+                    {person.avatar ? (
+                      <Image source={person.avatar} style={styles.whoAvatarImg} />
+                    ) : (
+                      <View style={[styles.whoAvatar, { backgroundColor: person.color + '22' }]}>
+                        <Text style={styles.whoEmoji}>{person.emoji}</Text>
+                      </View>
+                    )}
                     <Text style={styles.whoName} numberOfLines={1}>{person.label}</Text>
                     <Text style={styles.whoSpent} numberOfLines={1}>{formatCurrency(w.spent)}</Text>
                   </View>
@@ -245,7 +260,7 @@ export default function DashboardScreen() {
         {/* Budgets at a glance */}
         <SectionTitle>Anggaran</SectionTitle>
         <Card>
-          {byCat.slice(0, 5).map((c, i) => {
+          {budgetList.map((c, i) => {
             const cat = categoryOf(c.category);
             return (
               <View
@@ -306,6 +321,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   whoAvatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  whoAvatarImg: { width: 52, height: 52 },
   whoEmoji: { fontSize: 26 },
   whoName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
   whoSpent: { fontSize: 15, color: colors.text, fontWeight: '800' },

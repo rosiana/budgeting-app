@@ -59,6 +59,57 @@ export default function BalancesScreen() {
     [balances, ownerFilter]
   );
   const total = totalBalance(shownBalances);
+
+  // Display rows: per-account, but in "Semua" the shared-label wallets
+  // (ShopeePay/GoPay/Tunai) are merged into one row summing Rosi + Rizal.
+  const displayRows = useMemo(() => {
+    type Row = {
+      key: string;
+      label: string;
+      icon: string;
+      color: string;
+      balance: number;
+      opening: number;
+      sources: SourceId[];
+    };
+    if (ownerFilter !== 'all') {
+      return shownBalances.map((b): Row => {
+        const s = sourceOf(b.source);
+        return {
+          key: b.source,
+          label: s.label,
+          icon: s.icon,
+          color: s.color,
+          balance: b.balance,
+          opening: openingBalances[b.source] ?? 0,
+          sources: [b.source],
+        };
+      });
+    }
+    const map = new Map<string, Row>();
+    for (const b of shownBalances) {
+      const s = sourceOf(b.source);
+      const ex = map.get(s.label);
+      const opening = openingBalances[b.source] ?? 0;
+      if (ex) {
+        ex.balance += b.balance;
+        ex.opening += opening;
+        ex.sources.push(b.source);
+      } else {
+        map.set(s.label, {
+          key: s.label,
+          label: s.label,
+          icon: s.icon,
+          color: s.color,
+          balance: b.balance,
+          opening,
+          sources: [b.source],
+        });
+      }
+    }
+    return [...map.values()];
+  }, [shownBalances, ownerFilter, openingBalances]);
+
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
 
   const [editing, setEditing] = useState<SourceId | null>(null);
@@ -184,7 +235,7 @@ export default function BalancesScreen() {
           <Text style={styles.ccOutstanding}>{formatCurrency(cc.outstanding)}</Text>
           {cc.outstanding > 0 ? (
             <Text style={styles.ccDue}>
-              {formatCurrency(cc.dueNext)} jatuh tempo {formatDateShort(cc.nextDue)}
+              Jatuh tempo {formatDateShort(cc.nextDue)}
             </Text>
           ) : (
             <Text style={styles.ccDue}>Tidak ada tagihan berjalan 🎉</Text>
@@ -222,24 +273,28 @@ export default function BalancesScreen() {
         {/* Per-source balances */}
         <SectionTitle>Per Sumber Dana</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
-          {shownBalances.map((b, i) => {
-            const src = sourceOf(b.source);
+          {displayRows.map((row, i) => {
+            const single = row.sources.length === 1;
             return (
               <TouchableOpacity
-                key={b.source}
-                activeOpacity={0.7}
-                onPress={() => openEditor(b.source)}
+                key={row.key}
+                activeOpacity={single ? 0.7 : 1}
+                onPress={() => single && openEditor(row.sources[0])}
                 style={[styles.srcRow, i === 0 && { marginTop: 0 }]}
               >
-                <View style={[styles.srcIcon, { backgroundColor: src.color + '22' }]}>
-                  <Ionicons name={src.icon as any} size={18} color={src.color} />
+                <View style={[styles.srcIcon, { backgroundColor: row.color + '22' }]}>
+                  <Ionicons name={row.icon as any} size={18} color={row.color} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.srcLabel}>{whoOf(src.owner).emoji} {src.label}</Text>
-                  <Text style={styles.srcOpening}>Saldo awal {formatCurrency(openingBalances[b.source] ?? 0)}</Text>
+                  <Text style={styles.srcLabel}>{row.label}</Text>
+                  <Text style={styles.srcOpening}>
+                    {single
+                      ? `Saldo awal ${formatCurrency(row.opening)}`
+                      : 'Rosi + Rizal'}
+                  </Text>
                 </View>
-                <Text style={[styles.srcBalance, b.balance < 0 && { color: colors.danger }]}>
-                  {formatCurrency(b.balance)}
+                <Text style={[styles.srcBalance, row.balance < 0 && { color: colors.danger }]}>
+                  {formatCurrency(row.balance)}
                 </Text>
               </TouchableOpacity>
             );
@@ -261,7 +316,7 @@ export default function BalancesScreen() {
                   style={[styles.payChip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
                 >
                   <Ionicons name={s.icon as any} size={14} color={s.color} />
-                  <Text style={[styles.payChipText, active && { color: s.color }]}>{whoOf(s.owner).emoji} {s.label}</Text>
+                  <Text style={[styles.payChipText, active && { color: s.color }]}>{s.label} · {whoOf(s.owner).label}</Text>
                 </TouchableOpacity>
               );
             })}

@@ -160,7 +160,7 @@ export default function TransactionsScreen() {
             style={[styles.toggleBtn, mode === m && styles.toggleActive]}
           >
             <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]} numberOfLines={1}>
-              {m === 'pengeluaran' ? 'Keluar' : m === 'pemasukan' ? 'Masuk' : 'Orang'}
+              {m === 'pengeluaran' ? 'Pengeluaran' : m === 'pemasukan' ? 'Pemasukan' : 'Per Orang'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -332,9 +332,9 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
   },
-  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+  toggleBtn: { flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRadius: radius.pill, alignItems: 'center' },
   toggleActive: { backgroundColor: colors.card },
-  toggleText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  toggleText: { fontSize: 12.5, fontWeight: '700', color: colors.textMuted },
   toggleTextActive: { color: colors.primary },
   filterRow: { height: 52, marginTop: spacing.sm },
   filterContent: { alignItems: 'center', paddingHorizontal: spacing.lg },

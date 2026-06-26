@@ -1,66 +1,80 @@
-/* Generates MoMoney's caramel monkey icon set from one SVG (run with node). */
+/* Generates MoMoney's icon set + per-person avatars from the user's monkey SVG. */
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const C = {
-  bg: '#B07D56', // brand caramel
-  outline: '#4A3A2E', // thick dark outline
-  head: '#6E5039', // medium brown head
-  face: '#F3E4CC', // cream face & inner ears
-  nose: '#8C6242',
-  noseOutline: '#5A4030',
-};
+const BG = '#B07D56'; // brand caramel
 
-/** Cute outlined monkey on a 1024 canvas. bg=null → transparent. The outline is
- *  drawn as a slightly larger dark silhouette behind the fills for a clean,
- *  even border (matching the provided sticker style). */
-function monkeySvg({ bg, scale = 1 }) {
-  const art = `
-    <g transform="translate(512 512) scale(${scale}) translate(-512 -520)">
-      <!-- outline silhouette (ears + head) -->
-      <circle cx="252" cy="476" r="130" fill="${C.outline}"/>
-      <circle cx="772" cy="476" r="130" fill="${C.outline}"/>
-      <ellipse cx="512" cy="522" rx="314" ry="284" fill="${C.outline}"/>
-      <!-- ears -->
-      <circle cx="252" cy="476" r="108" fill="${C.head}"/>
-      <circle cx="772" cy="476" r="108" fill="${C.head}"/>
-      <ellipse cx="252" cy="480" rx="54" ry="62" fill="${C.face}"/>
-      <ellipse cx="772" cy="480" rx="54" ry="62" fill="${C.face}"/>
-      <!-- head -->
-      <ellipse cx="512" cy="522" rx="292" ry="262" fill="${C.head}"/>
-      <!-- face -->
-      <path d="M512 318
-        C 624 318 706 360 706 360
-        C 742 470 742 560 700 636
-        C 656 712 588 752 512 752
-        C 436 752 368 712 324 636
-        C 282 560 282 470 318 360
-        C 318 360 400 318 512 318 Z" fill="${C.face}"/>
-      <!-- eyes -->
-      <ellipse cx="430" cy="548" rx="33" ry="42" fill="${C.outline}"/>
-      <ellipse cx="594" cy="548" rx="33" ry="42" fill="${C.outline}"/>
-      <!-- nose -->
-      <ellipse cx="512" cy="650" rx="34" ry="24" fill="${C.nose}" stroke="${C.noseOutline}" stroke-width="6"/>
-      <!-- mouth -->
-      <path d="M474 694 Q512 724 550 694" stroke="${C.outline}" stroke-width="11" fill="none" stroke-linecap="round"/>
-    </g>`;
+// The user's exact monkey face artwork (1024 canvas, transparent).
+const MONKEY = `
+  <circle cx="220" cy="512" r="104" fill="#5A341F"/>
+  <circle cx="804" cy="512" r="104" fill="#5A341F"/>
+  <path d="M242 430C196 434 160 468 160 512C160 556 196 590 242 594C226 544 226 480 242 430Z" fill="#FFD8A3"/>
+  <path d="M782 430C828 434 864 468 864 512C864 556 828 590 782 594C798 544 798 480 782 430Z" fill="#FFD8A3"/>
+  <ellipse cx="512" cy="502" rx="316" ry="308" fill="#5A341F"/>
+  <path d="M462 216C496 270 510 300 512 334C526 292 558 250 616 214C588 215 552 230 526 259C516 226 496 207 462 216Z" fill="#5A341F"/>
+  <path d="M512 395C557 322 686 342 731 435C771 520 744 658 660 707C597 743 427 743 364 707C280 658 253 520 293 435C338 342 467 322 512 395Z" fill="#FFD8A3"/>
+  <ellipse cx="346" cy="600" rx="38" ry="25" fill="#F5A16F" opacity="0.9"/>
+  <ellipse cx="678" cy="600" rx="38" ry="25" fill="#F5A16F" opacity="0.9"/>
+  <circle cx="396" cy="506" r="42" fill="#2D1A12"/>
+  <circle cx="628" cy="506" r="42" fill="#2D1A12"/>
+  <circle cx="381" cy="491" r="13" fill="white"/>
+  <circle cx="613" cy="491" r="13" fill="white"/>
+  <path d="M348 420C365 402 401 398 421 414" stroke="#5A341F" stroke-width="14" stroke-linecap="round"/>
+  <path d="M676 420C659 402 623 398 603 414" stroke="#5A341F" stroke-width="14" stroke-linecap="round"/>
+  <ellipse cx="512" cy="578" rx="20" ry="15" fill="#5A341F"/>
+  <circle cx="491" cy="568" r="11" fill="#2D1A12"/>
+  <circle cx="533" cy="568" r="11" fill="#2D1A12"/>
+  <path d="M430 648C452 699 572 699 594 648" stroke="#5A341F" stroke-width="14" stroke-linecap="round"/>
+`;
+
+// Accessories drawn on top of the monkey (in the 1024 coordinate space).
+const PINK_BOW = `
+  <g transform="translate(512 188)">
+    <path d="M0 0 L-78 -42 L-78 42 Z" fill="#FF9DBE" stroke="#E0567A" stroke-width="7"/>
+    <path d="M0 0 L78 -42 L78 42 Z" fill="#FF9DBE" stroke="#E0567A" stroke-width="7"/>
+    <circle cx="0" cy="0" r="22" fill="#E76A93"/>
+  </g>
+`;
+const SUNGLASSES = `
+  <g>
+    <rect x="330" y="472" width="132" height="74" rx="24" fill="#23201E"/>
+    <rect x="562" y="472" width="132" height="74" rx="24" fill="#23201E"/>
+    <rect x="456" y="496" width="112" height="16" rx="8" fill="#23201E"/>
+  </g>
+`;
+const LOLLIPOP = `
+  <g>
+    <rect x="772" y="250" width="12" height="190" rx="6" fill="#E7CBA0"/>
+    <circle cx="778" cy="232" r="50" fill="#FF6FA0"/>
+    <path d="M778 232 m0 -36 a36 36 0 1 1 -25 11 a23 23 0 1 0 16 -7" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  </g>
+`;
+
+function svg({ bg, scale = 1, accessory = '' }) {
   const background = bg ? `<rect width="1024" height="1024" fill="${bg}"/>` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${background}${art}</svg>`;
+  const inner = `${MONKEY}${accessory}`;
+  const body =
+    scale === 1
+      ? inner
+      : `<g transform="translate(512 512) scale(${scale}) translate(-512 -512)">${inner}</g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">${background}${body}</svg>`;
 }
 
 const assets = path.join(__dirname, '..', 'assets');
-
-async function render(svg, file) {
-  await sharp(Buffer.from(svg)).png().toFile(path.join(assets, file));
+async function render(s, file) {
+  await sharp(Buffer.from(s)).png().toFile(path.join(assets, file));
   console.log('wrote', file);
 }
 
 (async () => {
-  await render(monkeySvg({ bg: C.bg, scale: 1 }), 'icon.png');
-  await render(monkeySvg({ bg: C.bg, scale: 1 }), 'favicon.png');
-  // Android adaptive foreground: transparent, art inside the safe zone.
-  await render(monkeySvg({ bg: null, scale: 0.62 }), 'adaptive-foreground.png');
-  // Splash mark: transparent monkey, cream background comes from the plugin.
-  await render(monkeySvg({ bg: null, scale: 0.9 }), 'splash-icon.png');
+  // App icon + splash + adaptive (the plain monkey)
+  await render(svg({ bg: BG, scale: 0.92 }), 'icon.png');
+  await render(svg({ bg: BG, scale: 0.92 }), 'favicon.png');
+  await render(svg({ bg: null, scale: 0.6 }), 'adaptive-foreground.png');
+  await render(svg({ bg: null, scale: 0.9 }), 'splash-icon.png');
+  // Per-person avatars (transparent, with accessory)
+  await render(svg({ bg: null, scale: 0.84, accessory: PINK_BOW }), 'avatar-rosi.png');
+  await render(svg({ bg: null, scale: 0.84, accessory: SUNGLASSES }), 'avatar-rizal.png');
+  await render(svg({ bg: null, scale: 0.84, accessory: LOLLIPOP }), 'avatar-nonik.png');
 })();

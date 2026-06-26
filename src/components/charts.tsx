@@ -1,9 +1,81 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, {
+  Circle,
+  G,
+  Line,
+  Polyline,
+  Text as SvgText,
+} from 'react-native-svg';
 import { CategorySpend, DayPoint } from '../store/selectors';
 import { categoryOf, colors, fill } from '../theme';
 import { formatCompact } from '../utils/format';
+
+export interface MonthPoint {
+  key: string;
+  label: string;
+  value: number;
+}
+
+/** Line chart of total balance per month — tap a node to select that month. */
+export function BalanceLineChart({
+  data,
+  selectedKey,
+  onSelect,
+  height = 170,
+}: {
+  data: MonthPoint[];
+  selectedKey?: string | null;
+  onSelect?: (key: string) => void;
+  height?: number;
+}) {
+  const W = 340;
+  const padX = 16;
+  const padTop = 16;
+  const labelH = 20;
+  const innerH = height - labelH - padTop;
+  const values = data.map((d) => d.value);
+  const max = Math.max(1, ...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const stepX = (W - padX * 2) / Math.max(1, data.length - 1);
+
+  const pts = data.map((d, i) => ({
+    ...d,
+    x: padX + i * stepX,
+    y: padTop + (1 - (d.value - min) / span) * (innerH - 8) + 4,
+  }));
+  const polyline = pts.map((p) => `${p.x},${p.y}`).join(' ');
+
+  return (
+    <Svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`}>
+      <Polyline points={polyline} fill="none" stroke={colors.primary} strokeWidth={2.5} strokeLinejoin="round" />
+      {pts.map((p) => {
+        const active = p.key === selectedKey;
+        return (
+          <G key={p.key} onPress={() => onSelect?.(p.key)}>
+            {active ? (
+              <Line x1={p.x} y1={padTop} x2={p.x} y2={innerH + padTop} stroke={colors.border} strokeWidth={1} />
+            ) : null}
+            <Circle
+              cx={p.x}
+              cy={p.y}
+              r={active ? 6 : 4}
+              fill={active ? colors.primary : colors.card}
+              stroke={colors.primary}
+              strokeWidth={2}
+            />
+            {/* larger transparent hit target */}
+            <Circle cx={p.x} cy={p.y} r={16} fill="transparent" />
+            <SvgText x={p.x} y={height - 5} fontSize={9} fill={active ? colors.primary : colors.textMuted} textAnchor="middle">
+              {p.label}
+            </SvgText>
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
 
 /** Weekly bar chart of daily spend — tap a bar to select that day. */
 export function WeeklyBars({

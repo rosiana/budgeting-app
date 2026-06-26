@@ -73,6 +73,8 @@ export interface Who {
   label: string;
   color: string;
   emoji: string;
+  /** Optional monkey avatar image (require'd asset). */
+  avatar?: number;
 }
 
 /** Who owns a money source. */
