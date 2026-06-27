@@ -12,6 +12,13 @@ export function formatCurrency(amount: number): string {
   return 'Rp' + groupThousands(amount);
 }
 
+/** Mask amounts as Rp•••••• when the user has toggled privacy mode. */
+export function maybeMask(text: string, hidden: boolean): string {
+  if (!hidden) return text;
+  // Replace digit runs with dots so the layout doesn't jump too much.
+  return text.replace(/\d[\d.,]*/g, (m) => '•'.repeat(Math.max(3, Math.min(7, m.replace(/[.,]/g, '').length))));
+}
+
 /** Compact Rupiah for tight spaces: Rp1,2jt / Rp250rb / Rp2M */
 export function formatCompact(amount: number): string {
   const abs = Math.abs(amount);

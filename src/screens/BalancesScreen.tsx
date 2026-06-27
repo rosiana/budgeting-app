@@ -169,7 +169,7 @@ export default function BalancesScreen() {
               style={[styles.ownerBtn, ownerFilter === o && styles.ownerActive]}
             >
               <Text style={[styles.ownerText, ownerFilter === o && styles.ownerTextActive]}>
-                {o === 'all' ? 'Semua' : o === 'rosi' ? '👩 Rosi' : '👨 Rizal'}
+                {o === 'all' ? 'Semua' : o === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -263,23 +263,10 @@ export default function BalancesScreen() {
         {/* Credit card settings */}
         <SectionTitle>Pengaturan Kartu Kredit</SectionTitle>
         <Card>
-          <Text style={styles.settingLabel}>Dibayar dari</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-            {SOURCES.map((s) => {
-              const active = creditCard.paymentSource === s.id;
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  activeOpacity={0.8}
-                  onPress={() => setCreditCard({ paymentSource: s.id })}
-                  style={[styles.payChip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
-                >
-                  <Ionicons name={s.icon as any} size={14} color={s.color} />
-                  <Text style={[styles.payChipText, active && { color: s.color }]}>{s.label} · {whoOf(s.owner).label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <View style={styles.paySrcRow}>
+            <Ionicons name="card" size={16} color={colors.primary} />
+            <Text style={styles.paySrcText}>Dibayar dari BCA</Text>
+          </View>
 
           <DayStepper
             label="Tanggal cetak (cutoff)"
@@ -479,17 +466,17 @@ const styles = StyleSheet.create({
   srcOpening: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   srcBalance: { fontSize: 15, fontWeight: '800', color: colors.text },
   settingLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginBottom: spacing.sm },
-  payChip: {
+  paySrcRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    marginRight: spacing.sm,
+    gap: 8,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
   },
-  payChipText: { fontSize: 13, fontWeight: '600', color: colors.text },
+  paySrcText: { fontSize: 14, fontWeight: '700', color: colors.primaryDark },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
   stepperLabel: { fontSize: 14, color: colors.text, fontWeight: '600' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

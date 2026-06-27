@@ -8,14 +8,6 @@ import {
 import React from 'react';
 import { StyleSheet, Text as RNText, TextInput as RNTextInput } from 'react-native';
 
-const fontMap = {
-  Quicksand_400Regular,
-  Quicksand_500Medium,
-  Quicksand_600SemiBold,
-  Quicksand_700Bold,
-};
-
-/** Map a fontWeight to the matching Quicksand family (it's rounded on the ends). */
 const FAMILY: Record<string, string> = {
   '100': 'Quicksand_400Regular',
   '200': 'Quicksand_400Regular',
@@ -32,26 +24,44 @@ const FAMILY: Record<string, string> = {
 
 function familyFor(style: any): string {
   const flat = StyleSheet.flatten(style) || {};
-  const weight = flat.fontWeight != null ? String(flat.fontWeight) : 'normal';
-  return FAMILY[weight] || 'Quicksand_500Medium';
+  const w = flat.fontWeight != null ? String(flat.fontWeight) : 'normal';
+  return FAMILY[w] || 'Quicksand_500Medium';
 }
 
 let patched = false;
-/** Inject the rounded font into every Text/TextInput, keyed by their weight. */
+
+/**
+ * Inject the Quicksand family into every Text/TextInput, mapped by fontWeight.
+ * Patches the forwardRef's `render` so the family applies even when the
+ * component sets its own `style` (defaultProps merging would NOT work because
+ * React replaces, not merges, defaultProps for style).
+ */
 export function applyRoundedFont() {
   if (patched) return;
   patched = true;
   for (const Comp of [RNText, RNTextInput] as any[]) {
     const orig = Comp.render;
     if (typeof orig !== 'function') continue;
-    Comp.render = function (...args: any[]) {
-      const el = orig.apply(this, args);
-      return React.cloneElement(el, {
-        style: [el.props.style, { fontFamily: familyFor(el.props.style), fontWeight: 'normal' }],
+    Comp.render = function (props: any, ref: any) {
+      const el = orig.call(this, props, ref);
+      if (!el || !React.isValidElement(el)) return el;
+      const elStyle = (el.props as any).style;
+      return React.cloneElement(el as any, {
+        // Family placed AFTER user style so it wins unless they explicitly
+        // override fontFamily (rare). fontWeight is left alone so the layout
+        // engine still picks the right variant.
+        style: [elStyle, { fontFamily: familyFor(elStyle) }],
       });
     };
   }
 }
+
+const fontMap = {
+  Quicksand_400Regular,
+  Quicksand_500Medium,
+  Quicksand_600SemiBold,
+  Quicksand_700Bold,
+};
 
 export function useAppFonts(): boolean {
   const [loaded] = useFonts(fontMap);

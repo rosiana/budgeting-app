@@ -54,6 +54,7 @@ function migrateOpening(
 
 const STORAGE_KEY = 'receipt-budget:data:v3';
 const SYNC_KEY = 'receipt-budget:sync:v1';
+const PRIVACY_KEY = 'receipt-budget:privacy:v1';
 
 type Action =
   | { type: 'hydrate'; data: AppData }
@@ -63,7 +64,8 @@ type Action =
   | { type: 'setBudget'; category: CategoryId; amount: number }
   | { type: 'setOpeningBalance'; source: SourceId; amount: number }
   | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> }
-  | { type: 'replaceData'; data: SyncData };
+  | { type: 'replaceData'; data: SyncData }
+  | { type: 'reset' };
 
 const EMPTY: AppData = {
   transactions: [],
@@ -127,6 +129,14 @@ function reducer(state: AppData, action: Action): AppData {
         },
         settingsUpdatedAt: action.data.settingsUpdatedAt ?? state.settingsUpdatedAt,
       };
+    case 'reset':
+      return {
+        transactions: [],
+        budgets: DEFAULT_BUDGETS,
+        openingBalances: {},
+        creditCard: DEFAULT_CREDIT_CARD,
+        settingsUpdatedAt: Date.now(),
+      };
     default:
       return state;
   }
@@ -155,6 +165,11 @@ interface BudgetContextValue {
   syncNow: () => Promise<void>;
   /** Replace all local data (used after pulling from the Sheet). */
   replaceData: (data: SyncData) => void;
+  /** Wipe everything (transactions + opening balances) back to a fresh start. */
+  resetAllData: () => void;
+  /** When true, all displayed amounts are masked as Rp•••••• */
+  privacyMode: boolean;
+  setPrivacyMode: (v: boolean) => void;
 }
 
 export type NewTransaction = Omit<Transaction, 'id' | 'createdAt'>;
@@ -167,6 +182,19 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, EMPTY);
   const [ready, setReady] = React.useState(false);
   const [syncConfig, setSyncConfigState] = React.useState<SyncConfig>(EMPTY_SYNC);
+  const [privacyMode, setPrivacyModeState] = React.useState<boolean>(false);
+
+  // Load the privacy preference once.
+  useEffect(() => {
+    AsyncStorage.getItem(PRIVACY_KEY).then((raw) => {
+      if (raw === '1') setPrivacyModeState(true);
+    }).catch(() => {});
+  }, []);
+
+  const setPrivacyMode = React.useCallback((v: boolean) => {
+    setPrivacyModeState(v);
+    AsyncStorage.setItem(PRIVACY_KEY, v ? '1' : '0').catch(() => {});
+  }, []);
 
   // Load the sync config (kept separate from synced data — it holds a secret).
   useEffect(() => {
@@ -189,12 +217,24 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     'idle' | 'syncing' | 'synced' | 'error'
   >('idle');
   const [syncError, setSyncError] = React.useState<string | undefined>();
-  // Ref so the latest snapshot is always available to the debounced effect
+  // Refs so the latest snapshot is always available to the debounced effect
   // without re-running on every state tick.
   const stateRef = useRef(state);
   stateRef.current = state;
   const syncingRef = useRef(false);
   const queuedRef = useRef(false);
+  // Hash of the last data we sent OR received from the Sheet. We compare to
+  // the current state to decide whether an auto-sync is actually needed —
+  // this is what stops the infinite loop after a successful sync.
+  const lastSyncedSigRef = useRef<string>('');
+
+  function dataSignature(s: AppData): string {
+    const txSig = s.transactions
+      .map((t) => `${t.id}:${t.updatedAt || t.createdAt || 0}:${t.deleted ? 'D' : ''}`)
+      .sort()
+      .join('|');
+    return `${txSig}#${s.settingsUpdatedAt}`;
+  }
 
   const runSync = React.useCallback(
     async (cfg: SyncConfig) => {
@@ -216,6 +256,16 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         };
         const merged = await syncWithSheet(cfg, snapshot);
         dispatch({ type: 'replaceData', data: merged });
+        // Mark this data as "in sync" so the auto-sync effect doesn't re-fire
+        // off the dispatch we just did.
+        lastSyncedSigRef.current = dataSignature({
+          ...stateRef.current,
+          transactions: merged.transactions,
+          budgets: merged.budgets,
+          openingBalances: merged.openingBalances,
+          creditCard: merged.creditCard,
+          settingsUpdatedAt: merged.settingsUpdatedAt,
+        });
         setSyncConfig({ lastSyncedAt: Date.now() });
         setSyncStatus('synced');
       } catch (e: any) {
@@ -237,24 +287,34 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [runSync, syncConfig]
   );
 
-  // Auto-sync on every change (debounced), once we're ready and configured.
+  // Auto-sync on every meaningful change (debounced) — but skip if the data
+  // already matches what the Sheet has. That's what stops the loop.
   useEffect(() => {
     if (!ready) return;
     if (!syncConfig.url || !syncConfig.token) return;
+    const sig = dataSignature(state);
+    if (sig === lastSyncedSigRef.current) return;
     const t = setTimeout(() => runSync(syncConfig), 2500);
     return () => clearTimeout(t);
   }, [
     ready,
     syncConfig,
     runSync,
-    // Watch the parts of state that can change locally; the effect debounces
-    // so rapid edits collapse into a single sync.
     state.transactions,
     state.budgets,
     state.openingBalances,
     state.creditCard,
     state.settingsUpdatedAt,
   ]);
+
+  // Sync once at app start so we pick up any changes the other phone made.
+  useEffect(() => {
+    if (!ready) return;
+    if (!syncConfig.url || !syncConfig.token) return;
+    runSync(syncConfig);
+    // Only on (ready, having a config) — not on every config change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, syncConfig.url, syncConfig.token]);
 
   // Hydrate from disk on mount, seeding on first run.
   useEffect(() => {
@@ -337,8 +397,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       syncStatus,
       syncError,
       syncNow,
+      resetAllData: () => dispatch({ type: 'reset' }),
+      privacyMode,
+      setPrivacyMode,
     }),
-    [ready, state, syncConfig, setSyncConfig, syncStatus, syncError, syncNow]
+    [ready, state, syncConfig, setSyncConfig, syncStatus, syncError, syncNow, privacyMode, setPrivacyMode]
   );
 
   return (

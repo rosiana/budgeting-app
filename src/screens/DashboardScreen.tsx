@@ -17,6 +17,7 @@ import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
+  monthlyBalances,
   sourceBalances,
   spendByCategory,
   spendByWho,
@@ -39,6 +40,7 @@ import {
   formatCurrency,
   formatDateShort,
   formatMonth,
+  maybeMask,
 } from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -46,7 +48,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, creditCard, openingBalances } = useBudget();
+  const { transactions, budgets, creditCard, openingBalances, privacyMode, setPrivacyMode } = useBudget();
+  const money = (n: number) => maybeMask(formatCurrency(n), privacyMode);
 
   const totalSaldo = useMemo(
     () => totalBalance(sourceBalances(transactions, openingBalances, creditCard)),
@@ -75,20 +78,14 @@ export default function DashboardScreen() {
   const budgetPct = totalBudget > 0 ? spent / totalBudget : 0;
   const filledCats = byCat.filter((c) => c.budget > 0 && c.spent >= c.budget);
 
-  // Grafik Saldo: dummy 12-month balance series, anchored to the current total.
+  // Grafik Saldo: real 12-month total-balance series computed from transactions.
   const balanceSeries = useMemo<MonthPoint[]>(() => {
-    const factors = [0.55, 0.62, 0.58, 0.7, 0.66, 0.75, 0.82, 0.78, 0.9, 0.86, 0.97, 0.93];
     const short = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const now = new Date();
-    const idx = now.getMonth();
-    const norm = factors[idx] || 1;
-    const year = now.getFullYear();
-    return factors.map((f, i) => ({
-      key: `${year}-${String(i + 1).padStart(2, '0')}`,
-      label: short[i],
-      value: Math.max(0, Math.round(totalSaldo * (f / norm))),
-    }));
-  }, [totalSaldo]);
+    return monthlyBalances(transactions, openingBalances, creditCard, 12).map((m) => {
+      const [, mm] = m.key.split('-').map(Number);
+      return { key: m.key, label: short[mm - 1], value: m.total };
+    });
+  }, [transactions, openingBalances, creditCard]);
   const [selMonth, setSelMonth] = useState<string | null>(null);
   const activeKey = selMonth ?? mKey;
   const activePoint =
@@ -105,15 +102,30 @@ export default function DashboardScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
-        <Text style={styles.hero}>Halo, {userName} 👋</Text>
+        <View style={styles.heroRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
+            <Text style={styles.hero}>Halo, {userName} 👋</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setPrivacyMode(!privacyMode)}
+            style={styles.eyeBtn}
+            hitSlop={10}
+          >
+            <Ionicons
+              name={privacyMode ? 'eye-off' : 'eye'}
+              size={22}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
 
         {/* Balance summary */}
         <Card style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View>
               <Text style={styles.summaryLabel}>Pengeluaran bulan ini</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(spent)}</Text>
+              <Text style={styles.summaryValue}>{money(spent)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.summaryLabel}>
@@ -125,7 +137,7 @@ export default function DashboardScreen() {
                   { color: remaining >= 0 ? colors.success : colors.danger },
                 ]}
               >
-                {formatCurrency(Math.abs(remaining))}
+                {money(Math.abs(remaining))}
               </Text>
             </View>
           </View>
@@ -137,7 +149,7 @@ export default function DashboardScreen() {
               height={10}
             />
             <Text style={styles.budgetCaption}>
-              {Math.round(budgetPct * 100)}% dari anggaran {formatCurrency(totalBudget)}
+              {Math.round(budgetPct * 100)}% dari anggaran {money(totalBudget)}
             </Text>
             {filledCats.length > 0 ? (
               <View style={styles.budgetWarn}>
@@ -157,7 +169,7 @@ export default function DashboardScreen() {
               <Ionicons name="arrow-down-circle" size={16} color={colors.success} />
               <Text style={styles.cashflowLabel}>Pemasukan</Text>
             </View>
-            <Text style={[styles.cashflowValue, { color: colors.success }]}>{formatCurrency(income)}</Text>
+            <Text style={[styles.cashflowValue, { color: colors.success }]}>{money(income)}</Text>
           </Card>
           <Card style={styles.cashflowCard}>
             <View style={styles.cashflowTop}>
@@ -165,7 +177,7 @@ export default function DashboardScreen() {
               <Text style={styles.cashflowLabel}>Total Saldo</Text>
             </View>
             <Text style={[styles.cashflowValue, { color: colors.primary }]}>
-              {formatCurrency(totalSaldo)}
+              {money(totalSaldo)}
             </Text>
           </Card>
         </View>
@@ -186,14 +198,14 @@ export default function DashboardScreen() {
                 Jatuh tempo {formatDateShort(cc.nextDue)}
               </Text>
             </View>
-            <Text style={styles.ccAmount}>{formatCurrency(cc.outstanding)}</Text>
+            <Text style={styles.ccAmount}>{money(cc.outstanding)}</Text>
           </TouchableOpacity>
         ) : null}
 
         {/* Balance trend over the year */}
         <SectionTitle>Grafik Saldo</SectionTitle>
         <Card style={{ marginBottom: spacing.xl }}>
-          <Text style={styles.weekTotal}>{formatCurrency(activePoint.value)}</Text>
+          <Text style={styles.weekTotal}>{money(activePoint.value)}</Text>
           <Text style={styles.weekCaption}>
             total saldo {formatMonth(activeKey)} · ketuk titik bulan
           </Text>
@@ -220,7 +232,7 @@ export default function DashboardScreen() {
                       <View style={[styles.dot, { backgroundColor: cat.color }]} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.legendLabel} numberOfLines={1}>{cat.label}</Text>
-                        <Text style={styles.legendValue}>{formatCurrency(c.spent)}</Text>
+                        <Text style={styles.legendValue}>{money(c.spent)}</Text>
                       </View>
                     </View>
                   );
@@ -251,7 +263,7 @@ export default function DashboardScreen() {
                       </View>
                     )}
                     <Text style={styles.whoName} numberOfLines={1}>{person.label}</Text>
-                    <Text style={styles.whoSpent} numberOfLines={1}>{formatCurrency(w.spent)}</Text>
+                    <Text style={styles.whoSpent} numberOfLines={1}>{money(w.spent)}</Text>
                   </View>
                 );
               })}
@@ -275,8 +287,8 @@ export default function DashboardScreen() {
                     <Text style={styles.budgetLabel}>{cat.label}</Text>
                   </View>
                   <Text style={styles.budgetAmt}>
-                    {formatCurrency(c.spent)}{' '}
-                    <Text style={styles.budgetMuted}>/ {formatCurrency(c.budget)}</Text>
+                    {money(c.spent)}{' '}
+                    <Text style={styles.budgetMuted}>/ {money(c.budget)}</Text>
                   </Text>
                 </View>
                 <ProgressBar pct={c.pct} color={budgetStatusColor(c.pct)} />
@@ -298,13 +310,24 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg },
   greeting: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
-  hero: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
+  hero: { fontSize: 28, fontWeight: '800', color: colors.text },
+  eyeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   summaryCard: { backgroundColor: colors.primary, borderColor: colors.primary },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   summaryLabel: { color: colors.onPrimary, fontSize: 13, fontWeight: '600' },
   summaryValue: { color: colors.white, fontSize: 30, fontWeight: '800', marginTop: 2 },
-  summaryValueSm: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  summaryValueSm: { fontSize: 16, fontWeight: '800', marginTop: 2 },
   budgetCaption: { color: colors.onPrimary, fontSize: 12, marginTop: 6 },
   budgetWarn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   budgetWarnText: { color: '#FFE2B0', fontSize: 12, fontWeight: '700' },

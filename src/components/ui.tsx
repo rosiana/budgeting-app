@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  Image,
+  ImageBackground,
   StyleSheet,
   Text,
   TextStyle,
@@ -15,9 +15,9 @@ import { IconSet } from '../types';
 /** Subtle tiled brown grid behind a screen's content. */
 export function GridBg() {
   return (
-    <Image
+    <ImageBackground
       source={require('../../assets/grid-tile.png')}
-      resizeMode="repeat"
+      imageStyle={{ resizeMode: 'repeat' }}
       style={fill}
     />
   );

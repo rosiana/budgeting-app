@@ -199,6 +199,34 @@ export function totalBalance(balances: SourceBalance[]): number {
   return balances.reduce((s, b) => s + b.balance, 0);
 }
 
+/**
+ * Month-end total balance for the last 12 months, derived from actual
+ * transactions (no dummy data). For each month, we recompute balances using
+ * only the transactions up to and including that month's last day.
+ */
+export interface MonthBalance {
+  key: string; // yyyy-mm
+  total: number;
+}
+export function monthlyBalances(
+  transactions: Transaction[],
+  opening: Partial<Record<SourceId, number>>,
+  cc: CreditCardConfig,
+  months = 12
+): MonthBalance[] {
+  const out: MonthBalance[] = [];
+  const today = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const ref = new Date(today.getFullYear(), today.getMonth() - i + 1, 0); // last day of month
+    const cutoffIso = toISODate(ref);
+    const upTo = transactions.filter((t) => t.date <= cutoffIso);
+    const total = totalBalance(sourceBalances(upTo, opening, cc));
+    const key = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`;
+    out.push({ key, total });
+  }
+  return out;
+}
+
 /** Reimbursable expenses still awaiting payback from the company. */
 export function pendingReimbursements(transactions: Transaction[]): Transaction[] {
   return transactions

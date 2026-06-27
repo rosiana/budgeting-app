@@ -573,7 +573,6 @@ export default function AddTransactionScreen() {
                   <Text style={[styles.chipText, { color: cat.color }]} numberOfLines={1}>
                     {cat.label}
                   </Text>
-                  <Ionicons name="chevron-down" size={13} color={cat.color} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -651,7 +650,7 @@ export default function AddTransactionScreen() {
                     if (pickerFor !== null) updateItem(pickerFor, { category: c.id });
                     setPickerFor(null);
                   }}
-                  style={[styles.chip, { borderColor: c.color, backgroundColor: c.color + '12' }]}
+                  style={[styles.chip, { borderColor: c.color, backgroundColor: c.color + '18' }]}
                 >
                   <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
                   <Text style={[styles.chipText, { color: c.color }]}>{c.label}</Text>

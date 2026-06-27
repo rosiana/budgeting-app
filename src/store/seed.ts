@@ -22,21 +22,8 @@ export const DEFAULT_BUDGETS: Budgets = {
   lainnya: 1_000_000,
 };
 
-export const DEFAULT_OPENING_BALANCES: Partial<Record<SourceId, number>> = {
-  bca: 15_000_000,
-  seabank: 5_000_000,
-  ovo: 250_000,
-  shopeepay_rosi: 150_000,
-  gopay_rosi: 120_000,
-  emas: 7_500_000,
-  tunai_rosi: 300_000,
-  mandiri: 3_000_000,
-  bsi: 2_000_000,
-  bni: 1_000_000,
-  shopeepay_rizal: 100_000,
-  gopay_rizal: 80_000,
-  tunai_rizal: 200_000,
-};
+// Start at zero — open Saldo to set your real opening balance per account.
+export const DEFAULT_OPENING_BALANCES: Partial<Record<SourceId, number>> = {};
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -44,7 +31,12 @@ function daysAgo(n: number): string {
   return toISODate(d);
 }
 
-const seedTransactions: Transaction[] = [
+// Start empty — users add their own data.
+const seedTransactions: Transaction[] = [];
+
+// Sample data kept here for reference but no longer used by SEED_DATA.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _seedTransactionsSample: Transaction[] = [
   // Income
   { id: uid(), type: 'income', date: daysAgo(2), merchant: 'Gaji Rizal', amount: 18_000_000, category: 'lainnya', incomeCategory: 'gaji', who: 'rizal', source: 'bca', createdAt: Date.now() },
   { id: uid(), type: 'income', date: daysAgo(2), merchant: 'Gaji Rosi', amount: 12_000_000, category: 'lainnya', incomeCategory: 'gaji', who: 'rosi', source: 'mandiri', createdAt: Date.now() },
