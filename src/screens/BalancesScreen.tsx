@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -40,6 +41,7 @@ export default function BalancesScreen() {
     syncStatus,
     syncError,
     syncNow,
+    resetAllData,
   } = useBudget();
 
   const pending = useMemo(() => pendingReimbursements(transactions), [transactions]);
@@ -356,6 +358,37 @@ export default function BalancesScreen() {
             disabled={syncStatus === 'syncing' || !url}
           />
         </Card>
+
+        {/* Danger zone */}
+        <View style={{ height: spacing.xl }} />
+        <SectionTitle>Zona Bahaya</SectionTitle>
+        <Card style={{ marginTop: 0 }}>
+          <Text style={styles.dangerHint}>
+            Menghapus semua transaksi dan saldo awal di HP ini. Kalau sudah sinkron,
+            data di Google Sheet juga akan ikut kosong saat sync berikutnya.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.resetBtn}
+            onPress={() =>
+              Alert.alert(
+                'Hapus semua data?',
+                'Semua transaksi dan saldo awal akan dihapus. Lanjutkan?',
+                [
+                  { text: 'Batal', style: 'cancel' },
+                  {
+                    text: 'Hapus',
+                    style: 'destructive',
+                    onPress: () => resetAllData(),
+                  },
+                ]
+              )
+            }
+          >
+            <Ionicons name="trash" size={18} color={colors.white} />
+            <Text style={styles.resetBtnText}>Hapus Semua Data</Text>
+          </TouchableOpacity>
+        </Card>
       </ScrollView>
 
       {/* Opening balance editor */}
@@ -477,6 +510,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   paySrcText: { fontSize: 14, fontWeight: '700', color: colors.primaryDark },
+  dangerHint: { fontSize: 12, color: colors.textMuted, lineHeight: 17, marginBottom: spacing.md },
+  resetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.danger,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+  },
+  resetBtnText: { color: colors.white, fontSize: 15, fontWeight: '800' },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
   stepperLabel: { fontSize: 14, color: colors.text, fontWeight: '600' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

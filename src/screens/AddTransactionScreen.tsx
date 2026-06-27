@@ -567,10 +567,10 @@ export default function AddTransactionScreen() {
                 <TouchableOpacity
                   onPress={() => setPickerFor(idx)}
                   activeOpacity={0.8}
-                  style={[styles.chip, { borderColor: cat.color, backgroundColor: cat.color + '18' }]}
+                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
                 >
                   <CatIcon name={cat.icon} set={cat.iconSet} size={14} color={cat.color} />
-                  <Text style={[styles.chipText, { color: cat.color }]} numberOfLines={1}>
+                  <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
                     {cat.label}
                   </Text>
                 </TouchableOpacity>

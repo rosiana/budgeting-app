@@ -76,7 +76,7 @@ export default function DashboardScreen() {
     [byCat]
   );
   const budgetPct = totalBudget > 0 ? spent / totalBudget : 0;
-  const filledCats = byCat.filter((c) => c.budget > 0 && c.spent >= c.budget);
+  const filledCats = byCat.filter((c) => c.budget > 0 && c.spent > c.budget);
 
   // Grafik Saldo: real 12-month total-balance series computed from transactions.
   const balanceSeries = useMemo<MonthPoint[]>(() => {
@@ -153,9 +153,9 @@ export default function DashboardScreen() {
             </Text>
             {filledCats.length > 0 ? (
               <View style={styles.budgetWarn}>
-                <Ionicons name="warning" size={13} color="#FFE2B0" />
+                <Ionicons name="alert-circle" size={14} color={colors.warning} />
                 <Text style={styles.budgetWarnText}>
-                  {filledCats.length} kategori sudah penuh / lewat anggaran
+                  {filledCats.length} kategori melebihi anggaran
                 </Text>
               </View>
             ) : null}
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   summaryValueSm: { fontSize: 16, fontWeight: '800', marginTop: 2 },
   budgetCaption: { color: colors.onPrimary, fontSize: 12, marginTop: 6 },
   budgetWarn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
-  budgetWarnText: { color: '#FFE2B0', fontSize: 12, fontWeight: '700' },
+  budgetWarnText: { color: colors.warning, fontSize: 12, fontWeight: '700' },
   cashflowSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   whoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xl },
   whoCard: {

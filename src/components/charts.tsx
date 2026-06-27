@@ -4,7 +4,6 @@ import Svg, {
   Circle,
   G,
   Line,
-  Polyline,
   Text as SvgText,
 } from 'react-native-svg';
 import { CategorySpend, DayPoint } from '../store/selectors';
@@ -45,11 +44,25 @@ export function BalanceLineChart({
     x: padX + i * stepX,
     y: padTop + (1 - (d.value - min) / span) * (innerH - 8) + 4,
   }));
-  const polyline = pts.map((p) => `${p.x},${p.y}`).join(' ');
-
   return (
     <Svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`}>
-      <Polyline points={polyline} fill="none" stroke={colors.primary} strokeWidth={2.5} strokeLinejoin="round" />
+      {/* Each segment is colored red when the balance dropped, green otherwise. */}
+      {pts.slice(1).map((p, i) => {
+        const prev = pts[i];
+        const up = p.value >= prev.value;
+        return (
+          <Line
+            key={`seg-${p.key}`}
+            x1={prev.x}
+            y1={prev.y}
+            x2={p.x}
+            y2={p.y}
+            stroke={up ? colors.success : colors.danger}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+        );
+      })}
       {pts.map((p) => {
         const active = p.key === selectedKey;
         return (

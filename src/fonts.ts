@@ -1,40 +1,42 @@
 import {
-  Quicksand_400Regular,
-  Quicksand_500Medium,
-  Quicksand_600SemiBold,
-  Quicksand_700Bold,
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
   useFonts,
-} from '@expo-google-fonts/quicksand';
+} from '@expo-google-fonts/fredoka';
 import React from 'react';
 import { StyleSheet, Text as RNText, TextInput as RNTextInput } from 'react-native';
 
 const FAMILY: Record<string, string> = {
-  '100': 'Quicksand_400Regular',
-  '200': 'Quicksand_400Regular',
-  '300': 'Quicksand_400Regular',
-  '400': 'Quicksand_400Regular',
-  normal: 'Quicksand_400Regular',
-  '500': 'Quicksand_500Medium',
-  '600': 'Quicksand_600SemiBold',
-  '700': 'Quicksand_700Bold',
-  '800': 'Quicksand_700Bold',
-  '900': 'Quicksand_700Bold',
-  bold: 'Quicksand_700Bold',
+  '100': 'Fredoka_400Regular',
+  '200': 'Fredoka_400Regular',
+  '300': 'Fredoka_400Regular',
+  '400': 'Fredoka_400Regular',
+  normal: 'Fredoka_400Regular',
+  '500': 'Fredoka_500Medium',
+  '600': 'Fredoka_600SemiBold',
+  '700': 'Fredoka_700Bold',
+  '800': 'Fredoka_700Bold',
+  '900': 'Fredoka_700Bold',
+  bold: 'Fredoka_700Bold',
 };
 
 function familyFor(style: any): string {
   const flat = StyleSheet.flatten(style) || {};
   const w = flat.fontWeight != null ? String(flat.fontWeight) : 'normal';
-  return FAMILY[w] || 'Quicksand_500Medium';
+  return FAMILY[w] || 'Fredoka_500Medium';
 }
 
 let patched = false;
 
 /**
- * Inject the Quicksand family into every Text/TextInput, mapped by fontWeight.
- * Patches the forwardRef's `render` so the family applies even when the
- * component sets its own `style` (defaultProps merging would NOT work because
- * React replaces, not merges, defaultProps for style).
+ * Make Fredoka (rounded) the default family on every Text and TextInput by
+ * patching the forwardRef's render. Wrapped with cloneElement so the family
+ * applies even when the component supplies its own `style` prop.
+ *
+ * Called both at module load AND after fonts resolve to be defensive about
+ * timing — the patch itself is idempotent.
  */
 export function applyRoundedFont() {
   if (patched) return;
@@ -47,9 +49,9 @@ export function applyRoundedFont() {
       if (!el || !React.isValidElement(el)) return el;
       const elStyle = (el.props as any).style;
       return React.cloneElement(el as any, {
-        // Family placed AFTER user style so it wins unless they explicitly
-        // override fontFamily (rare). fontWeight is left alone so the layout
-        // engine still picks the right variant.
+        // user style first → user can still override fontFamily if they want.
+        // BUT we put the font LAST below so it ALWAYS wins; the only reason to
+        // ever override would be to force a non-Fredoka font, which we don't.
         style: [elStyle, { fontFamily: familyFor(elStyle) }],
       });
     };
@@ -57,10 +59,10 @@ export function applyRoundedFont() {
 }
 
 const fontMap = {
-  Quicksand_400Regular,
-  Quicksand_500Medium,
-  Quicksand_600SemiBold,
-  Quicksand_700Bold,
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
 };
 
 export function useAppFonts(): boolean {

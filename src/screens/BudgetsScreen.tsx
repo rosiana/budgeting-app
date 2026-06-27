@@ -79,7 +79,7 @@ export default function BudgetsScreen() {
           </View>
           {overCount > 0 ? (
             <View style={styles.warn}>
-              <Ionicons name="alert-circle" size={16} color={colors.danger} />
+              <Ionicons name="alert-circle" size={14} color={colors.warning} />
               <Text style={styles.warnText}>
                 {overCount} kategori melebihi anggaran
               </Text>
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  warnText: { color: colors.danger, fontWeight: '600', fontSize: 13 },
+  warnText: { color: colors.warning, fontWeight: '700', fontSize: 12 },
   hint: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md },
   catCard: {
     backgroundColor: colors.card,
