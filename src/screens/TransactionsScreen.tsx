@@ -2,15 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
-import {
-  Alert,
-  ScrollView,
-  SectionList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Alert, ScrollView, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
@@ -18,9 +11,12 @@ import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
 import {
   CATEGORIES,
+  CATEGORY_MAP,
   colors,
   INCOME_CATEGORIES,
   INCOME_CATEGORY_MAP,
+  PICKABLE_CATEGORIES,
+  PICKABLE_INCOME_CATEGORIES,
   radius,
   sourceOf,
   spacing,
@@ -37,6 +33,7 @@ import {
   monthKey as monthKeyOf,
   shiftMonth,
 } from '../utils/format';
+import { useMoney } from '../utils/money';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Mode = 'pengeluaran' | 'pemasukan' | 'orang';
@@ -45,6 +42,7 @@ export default function TransactionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { transactions, deleteTransaction } = useBudget();
+  const money = useMoney();
   const [month, setMonth] = useState(currentMonthKey());
   const [mode, setMode] = useState<Mode>('pengeluaran');
   const [catFilter, setCatFilter] = useState<string>('all'); // expense category id
@@ -175,30 +173,36 @@ export default function TransactionsScreen() {
           {mode === 'pengeluaran' ? (
             <>
               <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
-              {CATEGORIES.map((c) => (
+              {PICKABLE_CATEGORIES.map((id) => {
+                const c = CATEGORY_MAP[id];
+                return (
                 <Pill
-                  key={c.id}
+                  key={id}
                   label={c.label}
                   icon={c.iconSet ? undefined : (c.icon as any)}
                   color={c.color}
-                  active={catFilter === c.id}
-                  onPress={() => setCatFilter(c.id)}
+                  active={catFilter === id}
+                  onPress={() => setCatFilter(id)}
                 />
-              ))}
+                );
+              })}
             </>
           ) : mode === 'pemasukan' ? (
             <>
               <Pill label="Semua" active={incFilter === 'all'} onPress={() => setIncFilter('all')} />
-              {INCOME_CATEGORIES.map((c) => (
+              {PICKABLE_INCOME_CATEGORIES.map((id) => {
+                const c = INCOME_CATEGORY_MAP[id];
+                return (
                 <Pill
-                  key={c.id}
+                  key={id}
                   label={c.label}
                   icon={c.icon as any}
                   color={colors.success}
-                  active={incFilter === c.id}
-                  onPress={() => setIncFilter(c.id)}
+                  active={incFilter === id}
+                  onPress={() => setIncFilter(id)}
                 />
-              ))}
+                );
+              })}
             </>
           ) : (
             <>
@@ -234,7 +238,7 @@ export default function TransactionsScreen() {
             <Text style={styles.sectionDate}>{section.title}</Text>
             <Text style={styles.sectionSubtotal}>
               {section.subtotal >= 0 ? '+' : '-'}
-              {formatCurrency(Math.abs(section.subtotal))}
+              {money(Math.abs(section.subtotal))}
             </Text>
           </View>
         )}
@@ -261,7 +265,7 @@ export default function TransactionsScreen() {
                   </Text>
                   <Text style={[styles.amount, income && { color: colors.success }]}>
                     {income ? '+' : ''}
-                    {formatCurrency(shown)}
+                    {money(shown)}
                   </Text>
                 </View>
                 {partial && itemsForCat.length ? (
@@ -269,10 +273,10 @@ export default function TransactionsScreen() {
                     {itemsForCat.map((it, i) => (
                       <View key={i} style={styles.itemLine}>
                         <Text style={styles.itemLineDesc} numberOfLines={1}>· {it.description}</Text>
-                        <Text style={styles.itemLineAmt}>{formatCurrency(it.amount)}</Text>
+                        <Text style={styles.itemLineAmt}>{money(it.amount)}</Text>
                       </View>
                     ))}
-                    <Text style={styles.itemLineTotal}>dari total {formatCurrency(item.amount)}</Text>
+                    <Text style={styles.itemLineTotal}>dari total {money(item.amount)}</Text>
                   </View>
                 ) : null}
                 <View style={styles.rowBottom}>

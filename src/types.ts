@@ -14,6 +14,10 @@ export type CategoryId =
   | 'fashion' // Fashion
   | 'rokok' // Rokok & Alkohol
   | 'sedekah' // Sedekah & Hadiah (charity & gifts)
+  | 'investasi_luar' // Investasi Luar (outside investment)
+  | 'biaya_transfer' // Biaya Transfer (transfer fee)
+  | 'penyesuaian_saldo' // Penyesuaian Saldo (manual balance correction, down)
+  | 'transfer_out' // Internal: transfer leg leaving an account
   | 'lainnya'; // Lainnya (others)
 
 /** Which icon font a category's `icon` name comes from. */
@@ -26,10 +30,11 @@ export type IncomeCategoryId =
   | 'investasi' // Investment Profit
   | 'jualan' // Selling
   | 'bunga' // Interest (+)
-  | 'transfer_in' // Transfer (+)
+  | 'transfer_in' // Internal: transfer leg arriving at an account
+  | 'penyesuaian_saldo_in' // Manual balance correction, up
   | 'lainnya_in'; // Others (+)
 
-export type TxType = 'expense' | 'income';
+export type TxType = 'expense' | 'income' | 'transfer';
 
 // Who the expense was for.
 export type WhoId = 'rosi' | 'rizal' | 'nonik' | 'rumah' | 'lainnya';
@@ -130,6 +135,12 @@ export interface Transaction {
   updatedAt?: number;
   /** Soft-delete tombstone; the row is hidden from UI but kept for sync. */
   deleted?: boolean;
+  /**
+   * Links the three legs of a transfer (out / in / fee) so we can render and
+   * delete them together. When present, the legs are excluded from spending,
+   * budget, and income totals — money only moves between accounts.
+   */
+  transferGroup?: string;
 }
 
 /** Per-category monthly spending limit, keyed by CategoryId. */

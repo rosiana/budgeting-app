@@ -1,16 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CatIcon, Card, GridBg, MonthNav, PrimaryButton, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
@@ -18,10 +9,12 @@ import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
 import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
 import { CategoryId } from '../types';
 import { currentMonthKey, formatCompact, formatCurrency, formatMonth, shiftMonth } from '../utils/format';
+import { useMoney } from '../utils/money';
 
 export default function BudgetsScreen() {
   const insets = useSafeAreaInsets();
   const { transactions, budgets, setBudget } = useBudget();
+  const money = useMoney();
   const [editing, setEditing] = useState<CategoryId | null>(null);
   const [draftValue, setDraftValue] = useState('');
 
@@ -121,8 +114,8 @@ export default function BudgetsScreen() {
                 {c.budget === 0
                   ? 'Belum ada batas'
                   : over
-                  ? `Lewat ${formatCurrency(c.spent - c.budget)}`
-                  : `Sisa ${formatCurrency(c.budget - c.spent)}`}
+                  ? `Lewat ${money(c.spent - c.budget)}`
+                  : `Sisa ${money(c.budget - c.spent)}`}
               </Text>
             </TouchableOpacity>
           );

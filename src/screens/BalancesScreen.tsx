@@ -1,18 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, GridBg, PrimaryButton, SectionTitle } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
@@ -23,9 +12,10 @@ import {
   sourceBalances,
   totalBalance,
 } from '../store/selectors';
-import { colors, fill, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
+import { colors, DEVICE_PERSON, fill, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
 import { SourceId } from '../types';
-import { formatCurrency, formatDateShort } from '../utils/format';
+import { formatCurrency, formatDateShort, todayISO } from '../utils/format';
+import { formatAmountInput, parseAmountInput, useMoney } from '../utils/money';
 
 export default function BalancesScreen() {
   const insets = useSafeAreaInsets();
@@ -33,7 +23,7 @@ export default function BalancesScreen() {
     transactions,
     openingBalances,
     creditCard,
-    setOpeningBalance,
+    addTransaction,
     setCreditCard,
     updateTransaction,
     syncConfig,
@@ -41,8 +31,8 @@ export default function BalancesScreen() {
     syncStatus,
     syncError,
     syncNow,
-    resetAllData,
   } = useBudget();
+  const money = useMoney();
 
   const pending = useMemo(() => pendingReimbursements(transactions), [transactions]);
   const pendingTotal = useMemo(() => reimbursementOutstanding(transactions), [transactions]);
@@ -116,14 +106,33 @@ export default function BalancesScreen() {
   const [editing, setEditing] = useState<SourceId | null>(null);
   const [draftValue, setDraftValue] = useState('');
 
+  // Current running balance for a single source, used to compute the delta.
+  const balanceOf = (s: SourceId): number =>
+    balances.find((b) => b.source === s)?.balance ?? 0;
+
   const openEditor = (s: SourceId) => {
     setEditing(s);
-    setDraftValue(String(openingBalances[s] ?? 0));
+    setDraftValue(formatAmountInput(String(Math.round(balanceOf(s)))));
   };
   const saveEditor = () => {
     if (editing) {
-      const n = parseFloat(draftValue.replace(/[^0-9.]/g, ''));
-      setOpeningBalance(editing, Number.isFinite(n) ? n : 0);
+      const target = parseAmountInput(draftValue);
+      const current = balanceOf(editing);
+      const delta = target - current;
+      if (Math.abs(delta) >= 1) {
+        // Adjustment is recorded as a transaction so the sync model stays clean.
+        const isUp = delta > 0;
+        addTransaction({
+          type: isUp ? 'income' : 'expense',
+          date: todayISO(),
+          merchant: `Penyesuaian ${sourceOf(editing).label}`,
+          amount: Math.abs(Math.round(delta)),
+          category: isUp ? 'lainnya' : 'penyesuaian_saldo',
+          incomeCategory: isUp ? 'penyesuaian_saldo_in' : undefined,
+          who: DEVICE_PERSON,
+          source: editing,
+        });
+      }
     }
     setEditing(null);
   };
@@ -180,7 +189,7 @@ export default function BalancesScreen() {
         {/* Total balance */}
         <Card style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total saldo{ownerFilter !== 'all' ? ` · ${ownerFilter === 'rosi' ? 'Rosi' : 'Rizal'}` : ''}</Text>
-          <Text style={styles.totalValue}>{formatCurrency(total)}</Text>
+          <Text style={styles.totalValue}>{money(total)}</Text>
           <Text style={styles.totalCaption}>di {shownBalances.length} sumber dana</Text>
         </Card>
 
@@ -193,7 +202,7 @@ export default function BalancesScreen() {
             </View>
             <Text style={styles.ccPaySrc}>bayar dari {sourceOf(creditCard.paymentSource).label}</Text>
           </View>
-          <Text style={styles.ccOutstanding}>{formatCurrency(cc.outstanding)}</Text>
+          <Text style={styles.ccOutstanding}>{money(cc.outstanding)}</Text>
           {cc.outstanding > 0 ? (
             <Text style={styles.ccDue}>
               Jatuh tempo {formatDateShort(cc.nextDue)}
@@ -211,13 +220,13 @@ export default function BalancesScreen() {
                 <Ionicons name="repeat" size={18} color={colors.accent} />
                 <Text style={styles.ccTitle}>Menunggu Reimburse</Text>
               </View>
-              <Text style={styles.reimTotal}>{formatCurrency(pendingTotal)}</Text>
+              <Text style={styles.reimTotal}>{money(pendingTotal)}</Text>
             </View>
             {pending.map((t) => (
               <View key={t.id} style={styles.reimRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.reimMerchant} numberOfLines={1}>{t.merchant}</Text>
-                  <Text style={styles.reimMeta}>{formatCurrency(t.amount)} · {formatDateShort(t.date)}</Text>
+                  <Text style={styles.reimMeta}>{money(t.amount)} · {formatDateShort(t.date)}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => updateTransaction({ ...t, reimbursed: true })}
@@ -249,13 +258,11 @@ export default function BalancesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.srcLabel}>{row.label}</Text>
                   <Text style={styles.srcOpening}>
-                    {single
-                      ? `Saldo awal ${formatCurrency(row.opening)}`
-                      : 'Rosi + Rizal'}
+                    {single ? 'Ketuk untuk sesuaikan' : 'Rosi + Rizal'}
                   </Text>
                 </View>
                 <Text style={[styles.srcBalance, row.balance < 0 && { color: colors.danger }]}>
-                  {formatCurrency(row.balance)}
+                  {money(row.balance)}
                 </Text>
               </TouchableOpacity>
             );
@@ -359,50 +366,23 @@ export default function BalancesScreen() {
           />
         </Card>
 
-        {/* Danger zone */}
-        <View style={{ height: spacing.xl }} />
-        <SectionTitle>Zona Bahaya</SectionTitle>
-        <Card style={{ marginTop: 0 }}>
-          <Text style={styles.dangerHint}>
-            Menghapus semua transaksi dan saldo awal di HP ini. Kalau sudah sinkron,
-            data di Google Sheet juga akan ikut kosong saat sync berikutnya.
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.resetBtn}
-            onPress={() =>
-              Alert.alert(
-                'Hapus semua data?',
-                'Semua transaksi dan saldo awal akan dihapus. Lanjutkan?',
-                [
-                  { text: 'Batal', style: 'cancel' },
-                  {
-                    text: 'Hapus',
-                    style: 'destructive',
-                    onPress: () => resetAllData(),
-                  },
-                ]
-              )
-            }
-          >
-            <Ionicons name="trash" size={18} color={colors.white} />
-            <Text style={styles.resetBtnText}>Hapus Semua Data</Text>
-          </TouchableOpacity>
-        </Card>
       </ScrollView>
 
-      {/* Opening balance editor */}
+      {/* Balance adjustment editor */}
       <Modal visible={editing !== null} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalWrap}>
           <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setEditing(null)} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.xl }]}>
-            <Text style={styles.sheetTitle}>Saldo awal {editing ? sourceOf(editing).label : ''}</Text>
-            <Text style={styles.sheetSub}>Saldo pembuka dipakai untuk menghitung saldo berjalan.</Text>
+            <Text style={styles.sheetTitle}>Sesuaikan Saldo {editing ? sourceOf(editing).label : ''}</Text>
+            <Text style={styles.sheetSub}>
+              Selisihnya dicatat sebagai transaksi "Penyesuaian Saldo" (pemasukan
+              atau pengeluaran).
+            </Text>
             <View style={styles.inputRow}>
               <Text style={styles.currency}>Rp</Text>
               <TextInput
                 value={draftValue}
-                onChangeText={setDraftValue}
+                onChangeText={(t) => setDraftValue(formatAmountInput(t))}
                 keyboardType="number-pad"
                 placeholder="0"
                 autoFocus

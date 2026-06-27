@@ -20,9 +20,21 @@ export function txForMonth(
 
 const isExpense = (t: Transaction) => t.type !== 'income';
 const isIncome = (t: Transaction) => t.type === 'income';
-// Reimbursable expenses are the company's cost, not the household's — they
-// never count toward spending or budgets.
-const countsAsSpending = (t: Transaction) => isExpense(t) && !t.reimbursable;
+// Reimbursable expenses are the company's cost (we'll get them back), transfer
+// legs are money moving between accounts (not spending), and balance
+// adjustments are corrections — none of these should pollute the
+// spending/budget/income totals.
+const countsAsSpending = (t: Transaction) =>
+  isExpense(t) &&
+  !t.reimbursable &&
+  !t.transferGroup &&
+  t.category !== 'penyesuaian_saldo' &&
+  t.category !== 'transfer_out';
+const countsAsIncome = (t: Transaction) =>
+  isIncome(t) &&
+  !t.transferGroup &&
+  t.incomeCategory !== 'penyesuaian_saldo_in' &&
+  t.incomeCategory !== 'transfer_in';
 
 /** Total expenses (income and reimbursables ignored). */
 export function totalSpent(transactions: Transaction[]): number {
@@ -30,7 +42,7 @@ export function totalSpent(transactions: Transaction[]): number {
 }
 
 export function totalIncome(transactions: Transaction[]): number {
-  return transactions.filter(isIncome).reduce((sum, t) => sum + t.amount, 0);
+  return transactions.filter(countsAsIncome).reduce((sum, t) => sum + t.amount, 0);
 }
 
 /**
@@ -94,7 +106,7 @@ export interface IncomeSpend {
 export function incomeByCategory(transactions: Transaction[]): IncomeSpend[] {
   const totals = {} as Record<IncomeCategoryId, number>;
   for (const t of transactions) {
-    if (!isIncome(t)) continue;
+    if (!countsAsIncome(t)) continue;
     const c = t.incomeCategory ?? 'lainnya_in';
     totals[c] = (totals[c] ?? 0) + t.amount;
   }

@@ -4,30 +4,22 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useMemo, useState } from 'react';
-import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CatIcon, PrimaryButton } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
   CATEGORIES,
+  CATEGORY_MAP,
   categoryOf,
   colors,
   DEVICE_PERSON,
   fill,
-  INCOME_CATEGORIES,
+  INCOME_CATEGORY_MAP,
+  PICKABLE_CATEGORIES,
+  PICKABLE_INCOME_CATEGORIES,
   radius,
   sourceOf,
   sourcesForPerson,
@@ -43,6 +35,7 @@ import {
   WhoId,
 } from '../types';
 import { formatCurrency, formatDateLong, toISODate, todayISO } from '../utils/format';
+import { formatAmountInput, parseAmountInput, useMoney } from '../utils/money';
 import { uid } from '../utils/id';
 import { persistImage } from '../utils/image';
 
@@ -60,8 +53,8 @@ interface EditableItem {
 const DEFAULT_WHO: WhoId = Platform.OS === 'ios' ? 'rosi' : 'rizal';
 
 function toAmount(s: string): number {
-  const n = parseFloat(s.replace(/[^0-9.]/g, ''));
-  return Number.isFinite(n) ? n : NaN;
+  // Strips "." separators that the input adds while typing.
+  return parseAmountInput(s);
 }
 
 export default function AddTransactionScreen() {
@@ -69,6 +62,7 @@ export default function AddTransactionScreen() {
   const route = useRoute<Rt>();
   const insets = useSafeAreaInsets();
   const { transactions, addTransaction, updateTransaction, deleteTransaction } = useBudget();
+  const money = useMoney();
 
   const draft = route.params?.draft;
   const isEdit = !!draft?.id;
@@ -76,7 +70,9 @@ export default function AddTransactionScreen() {
 
   const [type, setType] = useState<TxType>(draft?.type ?? 'expense');
   const [merchant, setMerchant] = useState(draft?.merchant ?? '');
-  const [amount, setAmount] = useState(draft?.amount != null ? String(Math.round(draft.amount)) : '');
+  const [amount, setAmount] = useState(
+    draft?.amount != null ? formatAmountInput(String(Math.round(draft.amount))) : ''
+  );
   const [date, setDate] = useState(draft?.date ?? todayISO());
   const [category, setCategory] = useState<CategoryId>(draft?.category ?? 'lainnya');
   const [incomeCategory, setIncomeCategory] = useState<IncomeCategoryId>(
@@ -90,6 +86,24 @@ export default function AddTransactionScreen() {
   const [image, setImage] = useState<string | undefined>(draft?.image);
   const [showDate, setShowDate] = useState(false);
   const isIncome = type === 'income';
+  const isTransfer = type === 'transfer';
+
+  // Transfer state: from-source, to-source, out and in amounts.
+  const [fromSource, setFromSource] = useState<SourceId>(defaultSource);
+  const [toSourcesPerson, setToSourcesPerson] = useState<'rosi' | 'rizal'>(DEVICE_PERSON);
+  const otherPerson: 'rosi' | 'rizal' = DEVICE_PERSON === 'rosi' ? 'rizal' : 'rosi';
+  const [toSource, setToSource] = useState<SourceId>(
+    sourcesForPerson(DEVICE_PERSON).filter((s) => s.id !== defaultSource)[0]?.id ?? defaultSource
+  );
+  const [amountOut, setAmountOut] = useState('');
+  const [amountIn, setAmountIn] = useState('');
+  const amountOutValue = parseAmountInput(amountOut);
+  const amountInValue = parseAmountInput(amountIn);
+  const transferFee = Math.max(0, amountOutValue - amountInValue);
+  const transferToList = useMemo(
+    () => sourcesForPerson(toSourcesPerson).filter((s) => s.id !== fromSource),
+    [toSourcesPerson, fromSource]
+  );
 
   // Sources this device's person can pay from (plus the current one when editing).
   const availableSources = useMemo(() => {
@@ -136,7 +150,7 @@ export default function AddTransactionScreen() {
     (draft?.items ?? []).map((it) => ({
       id: uid(),
       description: it.description,
-      amount: String(Math.round(it.amount)),
+      amount: formatAmountInput(String(Math.round(it.amount))),
       category: it.category,
     }))
   );
@@ -156,9 +170,10 @@ export default function AddTransactionScreen() {
     () => items.filter((it) => it.description.trim() && toAmount(it.amount) > 0).length,
     [items]
   );
-  const canSave =
-    merchant.trim().length > 0 &&
-    (itemized ? validItemCount > 0 && itemsSum > 0 : amountValue > 0);
+  const canSave = isTransfer
+    ? fromSource !== toSource && amountOutValue > 0 && amountInValue > 0 && amountInValue <= amountOutValue
+    : merchant.trim().length > 0 &&
+      (itemized ? validItemCount > 0 && itemsSum > 0 : amountValue > 0);
 
   const updateItem = (idx: number, patch: Partial<EditableItem>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -172,6 +187,49 @@ export default function AddTransactionScreen() {
 
   const onSave = () => {
     if (!canSave) return;
+    if (isTransfer) {
+      const tg = uid();
+      const fromLabel = sourceOf(fromSource).label;
+      const toLabel = sourceOf(toSource).label;
+      // Money out of source account (transfer leg, ignored from spending).
+      addTransaction({
+        type: 'expense',
+        date,
+        merchant: `Transfer ke ${toLabel}`,
+        amount: amountInValue,
+        category: 'transfer_out',
+        who: 'rumah',
+        source: fromSource,
+        transferGroup: tg,
+      });
+      // Money into the destination account (ignored from income).
+      addTransaction({
+        type: 'income',
+        date,
+        merchant: `Transfer dari ${fromLabel}`,
+        amount: amountInValue,
+        category: 'lainnya',
+        incomeCategory: 'transfer_in',
+        who: 'rumah',
+        source: toSource,
+        transferGroup: tg,
+      });
+      // The fee is real spending; counts in budgets/totals.
+      if (transferFee > 0) {
+        addTransaction({
+          type: 'expense',
+          date,
+          merchant: `${fromLabel} → ${toLabel}`,
+          amount: transferFee,
+          category: 'biaya_transfer',
+          who: 'rumah',
+          source: fromSource,
+          transferGroup: tg,
+        });
+      }
+      navigation.popToTop();
+      return;
+    }
     const cleanedItems: LineItem[] = items
       .filter((it) => it.description.trim() && toAmount(it.amount) > 0)
       .map((it) => ({
@@ -254,37 +312,141 @@ export default function AddTransactionScreen() {
           </View>
         ) : null}
 
-        {/* Expense / Income toggle */}
+        {/* Expense / Income / Transfer toggle */}
         <View style={styles.typeToggle}>
-          {(['expense', 'income'] as TxType[]).map((t) => {
+          {(['expense', 'income', 'transfer'] as TxType[]).map((t) => {
             const active = type === t;
-            const tint = t === 'income' ? colors.success : colors.danger;
+            const tint =
+              t === 'income' ? colors.success : t === 'transfer' ? colors.primary : colors.danger;
+            const icon =
+              t === 'income' ? 'arrow-down-circle' : t === 'transfer' ? 'swap-horizontal' : 'arrow-up-circle';
+            const label = t === 'income' ? 'Masuk' : t === 'transfer' ? 'Transfer' : 'Keluar';
             return (
               <TouchableOpacity
                 key={t}
                 onPress={() => setType(t)}
                 style={[styles.typeBtn, active && { backgroundColor: colors.card }]}
               >
-                <Ionicons
-                  name={t === 'income' ? 'arrow-down-circle' : 'arrow-up-circle'}
-                  size={18}
-                  color={active ? tint : colors.textMuted}
-                />
-                <Text style={[styles.typeText, active && { color: tint }]}>
-                  {t === 'income' ? 'Pemasukan' : 'Pengeluaran'}
-                </Text>
+                <Ionicons name={icon as any} size={18} color={active ? tint : colors.textMuted} />
+                <Text style={[styles.typeText, active && { color: tint }]}>{label}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
+        {/* Transfer subform */}
+        {isTransfer ? (
+          <View>
+            <Text style={styles.label}>Dari</Text>
+            <View style={styles.chipWrap}>
+              {sourcesForPerson(DEVICE_PERSON).map((s) => {
+                const active = fromSource === s.id;
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    onPress={() => setFromSource(s.id)}
+                    activeOpacity={0.8}
+                    style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
+                  >
+                    <Ionicons name={s.icon as any} size={14} color={s.color} />
+                    <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.label}>Ke (akun)</Text>
+            <View style={styles.typeToggle}>
+              {([DEVICE_PERSON, otherPerson] as const).map((p) => {
+                const a = toSourcesPerson === p;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => {
+                      setToSourcesPerson(p);
+                      const list = sourcesForPerson(p).filter((s) => s.id !== fromSource);
+                      if (list[0]) setToSource(list[0].id);
+                    }}
+                    style={[styles.typeBtn, a && { backgroundColor: colors.card }]}
+                  >
+                    <Text style={[styles.typeText, a && { color: colors.primary }]}>{p === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={[styles.chipWrap, { marginTop: spacing.sm }]}>
+              {transferToList.map((s) => {
+                const active = toSource === s.id;
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    onPress={() => setToSource(s.id)}
+                    activeOpacity={0.8}
+                    style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
+                  >
+                    <Ionicons name={s.icon as any} size={14} color={s.color} />
+                    <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.label}>Jumlah keluar</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.currency}>Rp</Text>
+              <TextInput
+                value={amountOut}
+                onChangeText={(t) => {
+                  const f = formatAmountInput(t);
+                  setAmountOut(f);
+                  // Default: in == out unless user already overrode it.
+                  if (!amountIn || amountIn === amountOut) setAmountIn(f);
+                }}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+                style={styles.amountInput}
+              />
+            </View>
+
+            <Text style={styles.label}>Jumlah masuk</Text>
+            <View style={styles.amountRow}>
+              <Text style={styles.currency}>Rp</Text>
+              <TextInput
+                value={amountIn}
+                onChangeText={(t) => setAmountIn(formatAmountInput(t))}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+                style={styles.amountInput}
+              />
+            </View>
+            {transferFee > 0 ? (
+              <Text style={styles.autoHint}>
+                Selisih {money(transferFee)} dicatat sebagai pengeluaran "Biaya Transfer".
+              </Text>
+            ) : null}
+
+            <Text style={styles.label}>Tanggal</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setShowDate(true)}
+              style={[styles.input, styles.dateField]}
+            >
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+              <Text style={styles.dateText}>{formatDateLong(date)}</Text>
+              <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+        <>
         {/* Amount */}
         <Text style={styles.label}>Jumlah</Text>
         {itemized ? (
           <>
             <View style={[styles.amountRow, { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight }]}>
               <Text style={styles.currency}>Rp</Text>
-              <Text style={styles.amountInput}>{formatCurrency(itemsSum).replace('Rp', '')}</Text>
+              <Text style={styles.amountInput}>{money(itemsSum).replace('Rp', '')}</Text>
               <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
             </View>
             <Text style={styles.autoHint}>Otomatis dijumlah dari {validItemCount} item di bawah.</Text>
@@ -294,7 +456,7 @@ export default function AddTransactionScreen() {
             <Text style={styles.currency}>Rp</Text>
             <TextInput
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(t) => setAmount(formatAmountInput(t))}
               keyboardType="number-pad"
               placeholder="0"
               placeholderTextColor={colors.textMuted}
@@ -421,13 +583,14 @@ export default function AddTransactionScreen() {
           <>
             <Text style={styles.label}>Kategori</Text>
             <View style={styles.chipWrap}>
-              {INCOME_CATEGORIES.map((c) => {
-                const active = incomeCategory === c.id;
+              {PICKABLE_INCOME_CATEGORIES.map((id) => {
+                const c = INCOME_CATEGORY_MAP[id];
+                const active = incomeCategory === id;
                 return (
                   <TouchableOpacity
-                    key={c.id}
+                    key={id}
                     activeOpacity={0.8}
-                    onPress={() => setIncomeCategory(c.id)}
+                    onPress={() => setIncomeCategory(id)}
                     style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
                   >
                     <Ionicons name={c.icon as any} size={14} color={c.color} />
@@ -449,13 +612,14 @@ export default function AddTransactionScreen() {
           <>
             <Text style={styles.label}>Kategori</Text>
             <View style={styles.chipWrap}>
-              {CATEGORIES.map((c) => {
-                const active = category === c.id;
+              {PICKABLE_CATEGORIES.map((id) => {
+                const c = CATEGORY_MAP[id];
+                const active = category === id;
                 return (
                   <TouchableOpacity
-                    key={c.id}
+                    key={id}
                     activeOpacity={0.8}
-                    onPress={() => setCategory(c.id)}
+                    onPress={() => setCategory(id)}
                     style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
                   >
                     <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
@@ -557,7 +721,7 @@ export default function AddTransactionScreen() {
                   <Text style={styles.itemRp}>Rp</Text>
                   <TextInput
                     value={it.amount}
-                    onChangeText={(t) => updateItem(idx, { amount: t })}
+                    onChangeText={(t) => updateItem(idx, { amount: formatAmountInput(t) })}
                     keyboardType="number-pad"
                     placeholder="0"
                     placeholderTextColor={colors.textMuted}
@@ -581,7 +745,7 @@ export default function AddTransactionScreen() {
 
         <View style={styles.itemsTotalRow}>
           <Text style={styles.itemsTotalLabel}>Jumlah transaksi</Text>
-          <Text style={styles.itemsTotalValue}>{formatCurrency(itemsSum)}</Text>
+          <Text style={styles.itemsTotalValue}>{money(itemsSum)}</Text>
         </View>
         </>
         ) : null}
@@ -618,6 +782,8 @@ export default function AddTransactionScreen() {
             <Text style={styles.attachText}>Lampirkan foto</Text>
           </TouchableOpacity>
         )}
+        </>
+        )}
 
         <View style={{ height: spacing.lg }} />
         <PrimaryButton
@@ -642,20 +808,23 @@ export default function AddTransactionScreen() {
           <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
             <Text style={styles.sheetTitle}>Pilih kategori item</Text>
             <View style={styles.chipWrap}>
-              {CATEGORIES.map((c) => (
+              {PICKABLE_CATEGORIES.map((id) => {
+                const c = CATEGORY_MAP[id];
+                return (
                 <TouchableOpacity
-                  key={c.id}
+                  key={id}
                   activeOpacity={0.8}
                   onPress={() => {
-                    if (pickerFor !== null) updateItem(pickerFor, { category: c.id });
+                    if (pickerFor !== null) updateItem(pickerFor, { category: id });
                     setPickerFor(null);
                   }}
-                  style={[styles.chip, { borderColor: c.color, backgroundColor: c.color + '18' }]}
+                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
                 >
                   <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
-                  <Text style={[styles.chipText, { color: c.color }]}>{c.label}</Text>
+                  <Text style={[styles.chipText, { color: colors.text }]}>{c.label}</Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           </View>
         </View>

@@ -1,14 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
-import {
-  ImageBackground,
-  StyleSheet,
-  Text,
-  TextStyle,
-  TouchableOpacity,
-  View,
-  ViewStyle,
-} from 'react-native';
+import { ImageBackground, StyleSheet, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Text, TextInput } from './typography';
 import { colors, fill, radius, spacing } from '../theme';
 import { IconSet } from '../types';
 

@@ -19,6 +19,12 @@ export const DEFAULT_BUDGETS: Budgets = {
   fashion: 500_000,
   rokok: 500_000,
   sedekah: 500_000,
+  investasi_luar: 1_000_000,
+  // Internal categories — kept at 0 since they're system-generated and not
+  // really budgeted against.
+  biaya_transfer: 0,
+  penyesuaian_saldo: 0,
+  transfer_out: 0,
   lainnya: 1_000_000,
 };
 
