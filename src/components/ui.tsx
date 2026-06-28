@@ -1,18 +1,57 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
-import { ImageBackground, StyleSheet, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { StyleSheet, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import Svg, { Circle, Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { Text, TextInput } from './typography';
+import { useBudget } from '../store/BudgetContext';
 import { colors, fill, radius, spacing } from '../theme';
 import { IconSet } from '../types';
 
-/** Subtle tiled brown grid behind a screen's content. */
-export function GridBg() {
+/**
+ * Floating eye toggle that masks/unmasks every amount across the app. Drop it
+ * into each screen so the visibility control is reachable from anywhere.
+ *
+ * Lives in the top-right of the screen, just below the status bar safe area.
+ */
+export function PrivacyEye({ topOffset = 0 }: { topOffset?: number }) {
+  const { privacyMode, setPrivacyMode } = useBudget();
   return (
-    <ImageBackground
-      source={require('../../assets/grid-tile.png')}
-      imageStyle={{ resizeMode: 'repeat' }}
-      style={fill}
-    />
+    <TouchableOpacity
+      onPress={() => setPrivacyMode(!privacyMode)}
+      hitSlop={10}
+      style={[styles.privacyEye, { top: topOffset + spacing.md }]}
+    >
+      <Ionicons
+        name={privacyMode ? 'eye-off' : 'eye'}
+        size={20}
+        color={colors.primary}
+      />
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Subtle tiled brown grid behind a screen's content. Rendered as an SVG
+ * pattern so the spacing is consistent across iOS and Android (an
+ * `ImageBackground` repeat-tile renders at different densities on each
+ * platform and looked much tighter on Android).
+ */
+export function GridBg() {
+  const C = '#7A5538';
+  const OPACITY = 0.09;
+  const S = 56; // tile size in logical points
+  return (
+    <View style={fill} pointerEvents="none">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <Pattern id="momoneyGrid" x="0" y="0" width={S} height={S} patternUnits="userSpaceOnUse">
+            <Path d={`M0 0.75 H${S} M0.75 0 V${S}`} stroke={C} strokeWidth={1.2} opacity={OPACITY} />
+            <Circle cx={S / 2} cy={S / 2} r={1.4} fill={C} opacity={OPACITY} />
+          </Pattern>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#momoneyGrid)" />
+      </Svg>
+    </View>
   );
 }
 
@@ -304,6 +343,24 @@ const styles = StyleSheet.create({
   },
   monthArrow: { padding: 4 },
   monthLabel: { fontSize: 15, fontWeight: '800', color: colors.text },
+  privacyEye: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

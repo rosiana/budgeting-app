@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill } from '../components/ui';
+import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill, PrivacyEye } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
@@ -135,6 +135,7 @@ export default function TransactionsScreen() {
   return (
     <View style={styles.root}>
       <GridBg />
+      <PrivacyEye topOffset={insets.top} />
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>Transaksi</Text>
         <Text style={styles.count}>{monthTx.length} bulan ini</Text>

@@ -5,6 +5,7 @@ import {
 } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 import BalancesScreen from '../screens/BalancesScreen';
 import BudgetsScreen from '../screens/BudgetsScreen';
@@ -25,6 +26,9 @@ const ICONS: Record<keyof TabParamList, keyof typeof Ionicons.glyphMap> = {
 };
 
 function Tabs() {
+  const insets = useSafeAreaInsets();
+  // Add the bottom safe-area inset so the Android nav bar doesn't overlap.
+  const tabBarBottom = Math.max(insets.bottom, 6);
   return (
     <Tab.Navigator
       screenOptions={({ route }): BottomTabNavigationOptions => ({
@@ -34,11 +38,15 @@ function Tabs() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          height: 60,
-          paddingBottom: 6,
+          height: 60 + tabBarBottom,
+          paddingBottom: tabBarBottom,
           paddingTop: 6,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          fontFamily: 'Fredoka_600SemiBold',
+        },
         tabBarIcon: ({ color, size, focused }) => (
           <Ionicons
             name={

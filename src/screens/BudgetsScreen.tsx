@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CatIcon, Card, GridBg, MonthNav, PrimaryButton, ProgressBar } from '../components/ui';
+import { CatIcon, Card, GridBg, MonthNav, PrimaryButton, PrivacyEye, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
 import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
@@ -42,6 +42,7 @@ export default function BudgetsScreen() {
   return (
     <View style={styles.root}>
       <GridBg />
+      <PrivacyEye topOffset={insets.top} />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -62,11 +63,11 @@ export default function BudgetsScreen() {
 
         <Card style={styles.summary}>
           <View style={styles.summaryRow}>
-            <SummaryStat label="Anggaran" value={formatCompact(totalBudget)} />
-            <SummaryStat label="Terpakai" value={formatCompact(spent)} />
+            <SummaryStat label="Anggaran" value={money(totalBudget)} />
+            <SummaryStat label="Terpakai" value={money(spent)} />
             <SummaryStat
               label="Sisa"
-              value={formatCompact(Math.max(0, totalBudget - spent))}
+              value={money(Math.max(0, totalBudget - spent))}
               color={totalBudget - spent >= 0 ? colors.success : colors.danger}
             />
           </View>
@@ -98,8 +99,8 @@ export default function BudgetsScreen() {
                   <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
                 </View>
                 <Text style={styles.catAmt}>
-                  {formatCompact(c.spent)}
-                  <Text style={styles.catAmtMuted}> / {formatCompact(c.budget)}</Text>
+                  {money(c.spent)}
+                  <Text style={styles.catAmtMuted}> / {money(c.budget)}</Text>
                 </Text>
               </View>
               <View style={{ marginVertical: 8 }}>
@@ -165,7 +166,14 @@ function SummaryStat({
   return (
     <View style={{ alignItems: 'center', flex: 1 }}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
+      <Text
+        style={[styles.statValue, { color }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -177,7 +185,7 @@ const styles = StyleSheet.create({
   summary: { marginBottom: spacing.lg },
   summaryRow: { flexDirection: 'row' },
   statLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  statValue: { fontSize: 17, fontWeight: '800', marginTop: 4 },
+  statValue: { fontSize: 15, fontWeight: '800', marginTop: 4 },
   warn: {
     flexDirection: 'row',
     alignItems: 'center',

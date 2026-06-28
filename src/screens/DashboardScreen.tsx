@@ -6,7 +6,7 @@ import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-nat
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BalanceLineChart, CategoryDonut, MonthPoint } from '../components/charts';
-import { BottomActions, CatIcon, Card, GridBg, ProgressBar, SectionTitle } from '../components/ui';
+import { BottomActions, CatIcon, Card, GridBg, PrivacyEye, ProgressBar, SectionTitle } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
@@ -88,6 +88,7 @@ export default function DashboardScreen() {
   return (
     <View style={styles.root}>
       <GridBg />
+      <PrivacyEye topOffset={insets.top} />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -101,17 +102,6 @@ export default function DashboardScreen() {
             <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
             <Text style={styles.hero}>Halo, {userName} 👋</Text>
           </View>
-          <TouchableOpacity
-            onPress={() => setPrivacyMode(!privacyMode)}
-            style={styles.eyeBtn}
-            hitSlop={10}
-          >
-            <Ionicons
-              name={privacyMode ? 'eye-off' : 'eye'}
-              size={22}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
         </View>
 
         {/* Balance summary */}

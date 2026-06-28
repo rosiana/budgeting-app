@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, GridBg, PrimaryButton, SectionTitle } from '../components/ui';
+import { Card, GridBg, PrimaryButton, PrivacyEye, SectionTitle } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
@@ -161,6 +161,7 @@ export default function BalancesScreen() {
   return (
     <View style={styles.root}>
       <GridBg />
+      <PrivacyEye topOffset={insets.top} />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top + spacing.md,
@@ -242,6 +243,7 @@ export default function BalancesScreen() {
 
         {/* Per-source balances */}
         <SectionTitle>Per Sumber Dana</SectionTitle>
+        <Text style={styles.tipText}>Ketuk rekening untuk menyesuaikan saldo.</Text>
         <Card style={{ marginBottom: spacing.xl }}>
           {displayRows.map((row, i) => {
             const single = row.sources.length === 1;
@@ -257,9 +259,9 @@ export default function BalancesScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.srcLabel}>{row.label}</Text>
-                  <Text style={styles.srcOpening}>
-                    {single ? 'Ketuk untuk sesuaikan' : 'Rosi + Rizal'}
-                  </Text>
+                  {!single ? (
+                    <Text style={styles.srcOpening}>Rosi + Rizal</Text>
+                  ) : null}
                 </View>
                 <Text style={[styles.srcBalance, row.balance < 0 && { color: colors.danger }]}>
                   {money(row.balance)}
@@ -477,6 +479,7 @@ const styles = StyleSheet.create({
   srcIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   srcLabel: { fontSize: 15, fontWeight: '700', color: colors.text },
   srcOpening: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  tipText: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md, marginTop: -spacing.sm },
   srcBalance: { fontSize: 15, fontWeight: '800', color: colors.text },
   settingLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginBottom: spacing.sm },
   paySrcRow: {
