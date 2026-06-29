@@ -78,6 +78,7 @@ export const CATEGORIES: Category[] = [
   // balance adjustments rather than picked by the user).
   { id: 'biaya_pajak', label: 'Biaya / Pajak Transaksi', icon: 'receipt', color: '#7E8B91' },
   { id: 'diskon', label: 'Diskon', icon: 'pricetags', color: '#2E9E5B' },
+  { id: 'rugi_investasi', label: 'Rugi Investasi', icon: 'trending-down', color: '#E26B6B' },
   { id: 'penyesuaian_saldo', label: 'Penyesuaian Saldo', icon: 'sync', color: '#7E8B91' },
   { id: 'transfer_out', label: 'Transfer', icon: 'arrow-up-circle', color: '#4C8BF5' },
   { id: 'lainnya', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
@@ -93,6 +94,10 @@ export const PICKABLE_CATEGORIES: CategoryId[] = [
 
 /** Categories that show up in Anggaran — system categories are excluded. */
 export const ANGGARAN_CATEGORIES: CategoryId[] = PICKABLE_CATEGORIES;
+
+/** Investment sources: balance adjustments here become Untung/Rugi Investasi
+ *  instead of generic Penyesuaian Saldo. */
+export const INVESTMENT_SOURCES: SourceId[] = ['bibit', 'ajaib', 'emas'];
 
 /** System-only categories (transfers/extras/adjustments). */
 export const SYSTEM_CATEGORIES: CategoryId[] = [
@@ -139,15 +144,18 @@ export const INCOME_CATEGORIES: IncomeCategory[] = [
   { id: 'jualan', label: 'Jualan', icon: 'pricetag', color: '#4C8BF5' },
   // 'bunga' is retired from the picker but kept in the map for legacy rows.
   { id: 'bunga', label: 'Bunga', icon: 'add-circle', color: '#7A6BF5' },
+  // Untung Investasi label kept for system-generated rows from upward
+  // adjustments on investment accounts.
   { id: 'transfer_in', label: 'Transfer Masuk', icon: 'arrow-down-circle', color: '#4C8BF5' },
   { id: 'penyesuaian_saldo_in', label: 'Penyesuaian Saldo', icon: 'sync', color: '#7E8B91' },
   { id: 'lainnya_in', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
 ];
 
 /** Income categories user can manually pick (excludes internal: transfer_in,
- *  penyesuaian_saldo_in, and the retired 'bunga'). */
+ *  penyesuaian_saldo_in, 'investasi' which is auto-routed from investment-
+ *  account adjustments, and the retired 'bunga'). */
 export const PICKABLE_INCOME_CATEGORIES: IncomeCategoryId[] = [
-  'gaji', 'bonus', 'investasi', 'jualan', 'lainnya_in',
+  'gaji', 'bonus', 'jualan', 'lainnya_in',
 ];
 
 export const INCOME_CATEGORY_MAP: Record<IncomeCategoryId, IncomeCategory> =

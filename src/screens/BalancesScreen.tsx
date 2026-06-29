@@ -12,7 +12,7 @@ import {
   sourceBalances,
   totalBalance,
 } from '../store/selectors';
-import { colors, DEVICE_PERSON, fill, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
+import { colors, DEVICE_PERSON, fill, INVESTMENT_SOURCES, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
 import { SourceId } from '../types';
 import { formatCurrency, formatDateShort, todayISO } from '../utils/format';
 import { formatAmountInput, parseAmountInput, useMoney } from '../utils/money';
@@ -121,14 +121,28 @@ export default function BalancesScreen() {
       const delta = target - current;
       if (Math.abs(delta) >= 1) {
         // Adjustment is recorded as a transaction so the sync model stays clean.
+        // For investment accounts (Bibit/Ajaib/Tring), route up to Untung
+        // Investasi and down to Rugi Investasi instead of generic Penyesuaian.
         const isUp = delta > 0;
+        const isInvestment = INVESTMENT_SOURCES.includes(editing);
+        const label = sourceOf(editing).label;
         addTransaction({
           type: isUp ? 'income' : 'expense',
           date: todayISO(),
-          merchant: `Penyesuaian ${sourceOf(editing).label}`,
+          merchant: isInvestment
+            ? `${isUp ? 'Untung' : 'Rugi'} Investasi ${label}`
+            : `Penyesuaian ${label}`,
           amount: Math.abs(Math.round(delta)),
-          category: isUp ? 'lainnya' : 'penyesuaian_saldo',
-          incomeCategory: isUp ? 'penyesuaian_saldo_in' : undefined,
+          category: isUp
+            ? 'lainnya'
+            : isInvestment
+              ? 'rugi_investasi'
+              : 'penyesuaian_saldo',
+          incomeCategory: isUp
+            ? isInvestment
+              ? 'investasi'
+              : 'penyesuaian_saldo_in'
+            : undefined,
           who: DEVICE_PERSON,
           source: editing,
         });

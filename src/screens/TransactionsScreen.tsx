@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  SectionList,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill, PrivacyEye, SegmentTabs } from '../components/ui';
@@ -12,19 +22,22 @@ import { groupByDate } from '../store/selectors';
 import {
   CATEGORIES,
   CATEGORY_MAP,
+  categoryOf,
   colors,
+  fill,
   INCOME_CATEGORIES,
   INCOME_CATEGORY_MAP,
   PICKABLE_CATEGORIES,
   PICKABLE_INCOME_CATEGORIES,
   radius,
   sourceOf,
+  SOURCES,
   spacing,
   txVisual,
   WHO,
   whoOf,
 } from '../theme';
-import { CategoryId, LineItem, Transaction, WhoId } from '../types';
+import { CategoryId, LineItem, SourceId, Transaction, WhoId } from '../types';
 import {
   currentMonthKey,
   formatCurrency,
@@ -46,6 +59,14 @@ export default function TransactionsScreen() {
   const [month, setMonth] = useState(currentMonthKey());
   const [mode, setMode] = useState<Mode>('semua');
   const [catFilter, setCatFilter] = useState<string>('all'); // expense category id
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Extra filters (separate from the mode tabs and the category pills).
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [nameQuery, setNameQuery] = useState('');
+  const [whoFilter, setWhoFilter] = useState<WhoId | 'all'>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceId | 'all'>('all');
+  const hasExtraFilter =
+    nameQuery.trim().length > 0 || whoFilter !== 'all' || sourceFilter !== 'all';
   const [incFilter, setIncFilter] = useState<string>('all'); // income category id
 
   const monthTx = useMemo(
@@ -58,20 +79,28 @@ export default function TransactionsScreen() {
     mode !== 'pemasukan' && catFilter !== 'all' ? (catFilter as CategoryId) : null;
 
   const filtered = useMemo(() => {
+    // 1) Mode + category/income tab filter (existing).
+    let list: Transaction[];
     if (mode === 'pemasukan') {
       const inc = monthTx.filter((t) => t.type === 'income');
-      return incFilter === 'all' ? inc : inc.filter((t) => t.incomeCategory === incFilter);
+      list = incFilter === 'all' ? inc : inc.filter((t) => t.incomeCategory === incFilter);
+    } else {
+      const base = mode === 'pengeluaran' ? monthTx.filter((t) => t.type !== 'income') : monthTx;
+      list = catFilter === 'all'
+        ? base
+        : base.filter(
+            (t) =>
+              t.type !== 'income' &&
+              (t.category === catFilter || t.items?.some((it) => it.category === catFilter))
+          );
     }
-    // Semua + Pengeluaran share the category filter. Semua shows both expense
-    // and income rows; Pengeluaran only expenses.
-    const base = mode === 'pengeluaran' ? monthTx.filter((t) => t.type !== 'income') : monthTx;
-    if (catFilter === 'all') return base;
-    return base.filter(
-      (t) =>
-        t.type !== 'income' &&
-        (t.category === catFilter || t.items?.some((it) => it.category === catFilter))
-    );
-  }, [monthTx, mode, catFilter, incFilter]);
+    // 2) Extra filters from the filter sheet.
+    const q = nameQuery.trim().toLowerCase();
+    if (q) list = list.filter((t) => (t.merchant || '').toLowerCase().includes(q));
+    if (whoFilter !== 'all') list = list.filter((t) => t.who === whoFilter);
+    if (sourceFilter !== 'all') list = list.filter((t) => t.source === sourceFilter);
+    return list;
+  }, [monthTx, mode, catFilter, incFilter, nameQuery, whoFilter, sourceFilter]);
 
   // Amount to show for a row — when filtered by a category, an itemized
   // transaction shows just that category's portion.
@@ -153,17 +182,30 @@ export default function TransactionsScreen() {
         />
       </View>
 
-      {/* Mode toggle: all / out / in */}
-      <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.sm }}>
-        <SegmentTabs
-          value={mode}
-          onChange={(v) => setMode(v as Mode)}
-          options={[
-            { id: 'semua', label: 'Semua' },
-            { id: 'pengeluaran', label: 'Keluar', icon: 'arrow-up-circle', activeIconColor: colors.danger },
-            { id: 'pemasukan', label: 'Masuk', icon: 'arrow-down-circle', activeIconColor: colors.success },
-          ]}
-        />
+      {/* Mode toggle + filter button */}
+      <View style={styles.modeRow}>
+        <View style={{ flex: 1 }}>
+          <SegmentTabs
+            value={mode}
+            onChange={(v) => setMode(v as Mode)}
+            options={[
+              { id: 'semua', label: 'Semua' },
+              { id: 'pengeluaran', label: 'Keluar', icon: 'arrow-up-circle', activeIconColor: colors.danger },
+              { id: 'pemasukan', label: 'Masuk', icon: 'arrow-down-circle', activeIconColor: colors.success },
+            ]}
+          />
+        </View>
+        <TouchableOpacity
+          onPress={() => setFilterOpen(true)}
+          style={[styles.filterBtn, hasExtraFilter && styles.filterBtnOn]}
+          hitSlop={8}
+        >
+          <Ionicons
+            name="options"
+            size={18}
+            color={hasExtraFilter ? colors.white : colors.primary}
+          />
+        </TouchableOpacity>
       </View>
 
       {mode !== 'semua' ? (
@@ -233,76 +275,19 @@ export default function TransactionsScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item }) => {
-          const vis = txVisual(item);
-          const person = whoOf(item.who);
-          const src = sourceOf(item.source);
-          const income = item.type === 'income';
-          const shown = rowAmount(item);
-          const partial = activeCat != null && shown !== item.amount;
-          const itemsForCat = matchingItems(item);
-          return (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => openEdit(item)}
-              onLongPress={() => confirmDelete(item)}
-              style={styles.row}
-            >
-              <IconCircle icon={vis.icon} iconSet={vis.iconSet} color={vis.color} />
-              <View style={{ flex: 1, marginLeft: spacing.md }}>
-                <View style={styles.rowTop}>
-                  <Text style={styles.merchant} numberOfLines={1}>
-                    {item.merchant}
-                  </Text>
-                  <Text style={[styles.amount, income && { color: colors.success }]}>
-                    {income ? '+' : ''}
-                    {money(shown)}
-                  </Text>
-                </View>
-                {partial && itemsForCat.length ? (
-                  <View style={styles.itemLines}>
-                    {itemsForCat.map((it, i) => (
-                      <View key={i} style={styles.itemLine}>
-                        <Text style={styles.itemLineDesc} numberOfLines={1}>· {it.description}</Text>
-                        <Text style={styles.itemLineAmt}>{money(it.amount)}</Text>
-                      </View>
-                    ))}
-                    <Text style={styles.itemLineTotal}>dari total {money(item.amount)}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.rowBottom}>
-                  <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
-                    <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
-                  </View>
-                  <Text style={styles.meta}>· {src.label}</Text>
-                  {item.creditCard ? (
-                    <View style={styles.ccBadge}>
-                      <Ionicons name="card" size={10} color={colors.primary} />
-                      <Text style={styles.ccBadgeText}>KK</Text>
-                    </View>
-                  ) : null}
-                  {item.reimbursable ? (
-                    <View style={[styles.ccBadge, item.reimbursed && { backgroundColor: colors.success + '22' }]}>
-                      <Ionicons name="repeat" size={10} color={item.reimbursed ? colors.success : colors.accent} />
-                      <Text style={[styles.ccBadgeText, { color: item.reimbursed ? colors.success : colors.accent }]}>
-                        {item.reimbursed ? 'Diganti' : 'Reimburse'}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {item.items && item.items.length ? (
-                    <Text style={styles.meta}>· {item.items.length} item</Text>
-                  ) : null}
-                  {item.scanned ? (
-                    <Ionicons name="scan" size={12} color={colors.primary} />
-                  ) : null}
-                  {item.image ? (
-                    <Ionicons name="image" size={12} color={colors.textMuted} />
-                  ) : null}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
+        renderItem={({ item }) => (
+          <TxRow
+            tx={item}
+            money={money}
+            activeCat={activeCat}
+            rowAmount={rowAmount}
+            matchingItems={matchingItems}
+            expanded={!!expanded[item.id]}
+            onToggleExpand={() => setExpanded((m) => ({ ...m, [item.id]: !m[item.id] }))}
+            onEdit={openEdit}
+            onDelete={confirmDelete}
+          />
+        )}
       />
 
       <BottomActions
@@ -310,6 +295,308 @@ export default function TransactionsScreen() {
         onScan={() => navigation.navigate('ScanReceipt')}
         onAdd={() => navigation.navigate('AddTransaction')}
       />
+
+      <FilterSheet
+        visible={filterOpen}
+        nameQuery={nameQuery}
+        whoFilter={whoFilter}
+        sourceFilter={sourceFilter}
+        nameSuggestions={Array.from(
+          new Set(transactions.map((t) => (t.merchant || '').trim()).filter(Boolean))
+        )}
+        onClose={() => setFilterOpen(false)}
+        onApply={(n, w, s) => {
+          setNameQuery(n);
+          setWhoFilter(w);
+          setSourceFilter(s);
+          setFilterOpen(false);
+        }}
+        onClear={() => {
+          setNameQuery('');
+          setWhoFilter('all');
+          setSourceFilter('all');
+          setFilterOpen(false);
+        }}
+        bottomInset={insets.bottom}
+      />
+    </View>
+  );
+}
+
+/** Bottom sheet for the extra filters that don't belong on a horizontal pill
+ *  strip (nama with autosuggest, untuk siapa, sumber dana). Applies on top of
+ *  whichever mode tab is active. */
+function FilterSheet({
+  visible,
+  nameQuery,
+  whoFilter,
+  sourceFilter,
+  nameSuggestions,
+  bottomInset,
+  onApply,
+  onClear,
+  onClose,
+}: {
+  visible: boolean;
+  nameQuery: string;
+  whoFilter: WhoId | 'all';
+  sourceFilter: SourceId | 'all';
+  nameSuggestions: string[];
+  bottomInset: number;
+  onApply: (name: string, who: WhoId | 'all', source: SourceId | 'all') => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(nameQuery);
+  const [who, setWho] = useState<WhoId | 'all'>(whoFilter);
+  const [source, setSource] = useState<SourceId | 'all'>(sourceFilter);
+
+  // Sync internal state when the sheet re-opens with parent values.
+  React.useEffect(() => {
+    if (visible) {
+      setName(nameQuery);
+      setWho(whoFilter);
+      setSource(sourceFilter);
+    }
+  }, [visible, nameQuery, whoFilter, sourceFilter]);
+
+  const suggestions = useMemo(() => {
+    const q = name.trim().toLowerCase();
+    if (!q) return [];
+    return nameSuggestions
+      .filter((n) => n.toLowerCase().includes(q) && n.toLowerCase() !== q)
+      .slice(0, 5);
+  }, [name, nameSuggestions]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.fsWrap}
+      >
+        <TouchableOpacity style={styles.fsBackdrop} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.fsSheet, { paddingBottom: bottomInset + spacing.xl }]}>
+          <Text style={styles.fsTitle}>Filter Transaksi</Text>
+
+          <Text style={styles.fsLabel}>Nama Transaksi</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="cari nama..."
+            placeholderTextColor={colors.textMuted}
+            style={styles.fsInput}
+          />
+          {suggestions.length ? (
+            <View style={styles.fsSuggestRow}>
+              {suggestions.map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => setName(s)}
+                  style={styles.fsSuggestChip}
+                >
+                  <Text style={styles.fsSuggestText} numberOfLines={1}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={styles.fsLabel}>Untuk Siapa</Text>
+          <View style={styles.fsChipRow}>
+            <FsChip label="Semua" active={who === 'all'} onPress={() => setWho('all')} />
+            {WHO.map((w) => (
+              <FsChip
+                key={w.id}
+                label={`${w.emoji} ${w.label}`}
+                color={w.color}
+                active={who === w.id}
+                onPress={() => setWho(w.id)}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.fsLabel}>Sumber Dana</Text>
+          <View style={styles.fsChipRow}>
+            <FsChip label="Semua" active={source === 'all'} onPress={() => setSource('all')} />
+            {SOURCES.map((s) => (
+              <FsChip
+                key={s.id}
+                label={`${whoOf(s.owner).emoji} ${s.label}`}
+                color={s.color}
+                active={source === s.id}
+                onPress={() => setSource(s.id)}
+              />
+            ))}
+          </View>
+
+          <View style={styles.fsButtons}>
+            <TouchableOpacity onPress={onClear} style={styles.fsClearBtn}>
+              <Text style={styles.fsClearText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onApply(name, who, source)}
+              style={styles.fsApplyBtn}
+            >
+              <Text style={styles.fsApplyText}>Terapkan</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function FsChip({
+  label,
+  color,
+  active,
+  onPress,
+}: {
+  label: string;
+  color?: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const c = color ?? colors.primary;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.fsChip,
+        active
+          ? { borderColor: c, backgroundColor: c + '18' }
+          : { borderColor: colors.border, backgroundColor: colors.card },
+      ]}
+    >
+      <Text style={[styles.fsChipText, active && { color: c }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** Single row in the Transaksi SectionList. Itemized expense transactions are
+ *  rendered as an accordion: tap the parent row to expand into per-item rows
+ *  styled like single-tx rows. When a category filter is active, the parent
+ *  total reflects only items in that category. */
+function TxRow({
+  tx,
+  money,
+  activeCat,
+  rowAmount,
+  matchingItems,
+  expanded,
+  onToggleExpand,
+  onEdit,
+  onDelete,
+}: {
+  tx: Transaction;
+  money: (n: number) => string;
+  activeCat: CategoryId | null;
+  rowAmount: (t: Transaction) => number;
+  matchingItems: (t: Transaction) => LineItem[];
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onEdit: (tx: Transaction) => void;
+  onDelete: (tx: Transaction) => void;
+}) {
+  const vis = txVisual(tx);
+  const person = whoOf(tx.who);
+  const src = sourceOf(tx.source);
+  const income = tx.type === 'income';
+  const isItemized = !!(tx.items && tx.items.length);
+  const shown = rowAmount(tx);
+  const itemsForCat = matchingItems(tx);
+  const itemsList = activeCat && itemsForCat.length ? itemsForCat : tx.items ?? [];
+
+  return (
+    <View style={styles.row}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => (isItemized ? onToggleExpand() : onEdit(tx))}
+        onLongPress={() => onDelete(tx)}
+        style={styles.rowTouch}
+      >
+        {/* Itemized parents use a distinct "basket" icon to signal multi-item;
+         *  single-tx rows use the category icon. */}
+        {isItemized ? (
+          <IconCircle icon="basket" iconSet="ion" color={vis.color} />
+        ) : (
+          <IconCircle icon={vis.icon} iconSet={vis.iconSet} color={vis.color} />
+        )}
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <View style={styles.rowTopRow}>
+            <Text style={styles.merchant} numberOfLines={1}>
+              {tx.merchant}
+            </Text>
+            <Text style={[styles.amount, income && { color: colors.success }]}>
+              {income ? '+' : ''}
+              {money(shown)}
+            </Text>
+          </View>
+          <View style={styles.rowBottom}>
+            <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
+              <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
+            </View>
+            <Text style={styles.meta}>· {src.label}</Text>
+            {tx.creditCard ? (
+              <View style={styles.ccBadge}>
+                <Ionicons name="card" size={10} color={colors.primary} />
+                <Text style={styles.ccBadgeText}>KK</Text>
+              </View>
+            ) : null}
+            {tx.reimbursable ? (
+              <View style={[styles.ccBadge, tx.reimbursed && { backgroundColor: colors.success + '22' }]}>
+                <Ionicons name="repeat" size={10} color={tx.reimbursed ? colors.success : colors.accent} />
+                <Text style={[styles.ccBadgeText, { color: tx.reimbursed ? colors.success : colors.accent }]}>
+                  {tx.reimbursed ? 'Diganti' : 'Reimburse'}
+                </Text>
+              </View>
+            ) : null}
+            {isItemized ? (
+              <Text style={styles.meta}>· {tx.items!.length} item</Text>
+            ) : null}
+            {tx.scanned ? <Ionicons name="scan" size={12} color={colors.primary} /> : null}
+            {tx.image ? <Ionicons name="image" size={12} color={colors.textMuted} /> : null}
+            {isItemized ? (
+              <Ionicons
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.textMuted}
+                style={{ marginLeft: 'auto' }}
+              />
+            ) : null}
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Expanded item list — only for itemized parents. */}
+      {isItemized && expanded ? (
+        <View style={styles.itemListWrap}>
+          {itemsList.map((it, i) => {
+            const cat = categoryOf(it.category);
+            const w = whoOf(it.who ?? tx.who);
+            return (
+              <View key={i} style={styles.itemRow}>
+                <IconCircle icon={cat.icon} iconSet={cat.iconSet} color={cat.color} size={32} />
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={styles.itemRowDesc} numberOfLines={1}>
+                    {it.description}
+                  </Text>
+                  <Text style={styles.itemRowMeta}>
+                    {cat.label} · {w.emoji} {w.label}
+                  </Text>
+                </View>
+                <Text style={styles.itemRowAmt}>{money(it.amount)}</Text>
+              </View>
+            );
+          })}
+          {/* Show the parent total when looking at a filtered subset so the
+           *  number is interpretable. */}
+          {activeCat && itemsForCat.length ? (
+            <Text style={styles.itemListTotal}>
+              dari total {money(tx.amount)}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -341,6 +628,83 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: colors.primary },
   filterRow: { height: 52, marginTop: spacing.sm },
   filterContent: { alignItems: 'center', paddingHorizontal: spacing.lg },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  filterBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBtnOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  // Filter sheet
+  fsWrap: { flex: 1, justifyContent: 'flex-end' },
+  fsBackdrop: { ...fill, backgroundColor: 'rgba(0,0,0,0.4)' },
+  fsSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  fsTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
+  fsLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md },
+  fsInput: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: colors.text,
+  },
+  fsSuggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  fsSuggestChip: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    maxWidth: '100%',
+  },
+  fsSuggestText: { fontSize: 12, color: colors.primaryDark, fontWeight: '600' },
+  fsChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  fsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  fsChipText: { fontSize: 13, fontWeight: '600', color: colors.text },
+  fsButtons: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
+  fsClearBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  fsClearText: { fontSize: 15, fontWeight: '700', color: colors.text },
+  fsApplyBtn: {
+    flex: 2,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  fsApplyText: { fontSize: 15, fontWeight: '800', color: colors.white },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -350,16 +714,35 @@ const styles = StyleSheet.create({
   sectionDate: { fontSize: 14, fontWeight: '700', color: colors.text },
   sectionSubtotal: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
   },
+  rowTouch: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
+  rowTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  itemListWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    paddingTop: 0,
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  itemRow: { flexDirection: 'row', alignItems: 'center', paddingTop: spacing.sm },
+  itemRowDesc: { fontSize: 14, fontWeight: '700', color: colors.text },
+  itemRowMeta: { fontSize: 11, color: colors.textMuted, fontWeight: '600', marginTop: 1 },
+  itemRowAmt: { fontSize: 14, fontWeight: '700', color: colors.text },
+  itemListTotal: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: 4,
+    textAlign: 'right',
+  },
   merchant: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text, marginRight: 8 },
   amount: { fontSize: 15, fontWeight: '800', color: colors.text },
   rowBottom: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },

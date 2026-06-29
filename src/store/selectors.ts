@@ -29,12 +29,16 @@ const countsAsSpending = (t: Transaction) =>
   !t.reimbursable &&
   !t.transferGroup &&
   t.category !== 'penyesuaian_saldo' &&
-  t.category !== 'transfer_out';
+  t.category !== 'transfer_out' &&
+  // Investment losses are tracked on Saldo but don't reduce spending budgets.
+  t.category !== 'rugi_investasi';
 const countsAsIncome = (t: Transaction) =>
   isIncome(t) &&
   !t.transferGroup &&
   t.incomeCategory !== 'penyesuaian_saldo_in' &&
-  t.incomeCategory !== 'transfer_in';
+  t.incomeCategory !== 'transfer_in' &&
+  // Investment gains are tracked on Saldo but don't inflate monthly income.
+  t.incomeCategory !== 'investasi';
 
 /** Total expenses (income and reimbursables ignored). */
 export function totalSpent(transactions: Transaction[]): number {
@@ -60,14 +64,15 @@ function addToCategoryTotals(
   };
   if (t.items && t.items.length) {
     const itemsSum = t.items.reduce((s, it) => s + it.amount, 0);
-    if (itemsSum > t.amount && itemsSum > 0) {
-      const scale = t.amount / itemsSum;
-      t.items.forEach((it) => add(it.category, it.amount * scale));
-    } else {
-      t.items.forEach((it) => add(it.category, it.amount));
-      const remainder = t.amount - itemsSum;
-      if (remainder > 0.5) add(t.category, remainder);
-    }
+    t.items.forEach((it) => add(it.category, it.amount));
+    const remainder = t.amount - itemsSum;
+    // Positive remainder = extra cost on top of the items (tax / service fee /
+    //   tip) → goes to Biaya / Pajak Transaksi.
+    // Negative remainder = the basket was discounted at checkout → goes as a
+    //   negative entry to Diskon, which keeps the parent's `amount` consistent
+    //   with the sum of all category contributions.
+    if (remainder > 0.5) add('biaya_pajak', remainder);
+    else if (remainder < -0.5) add('diskon', remainder);
   } else {
     add(t.category, t.amount);
   }

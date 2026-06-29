@@ -67,6 +67,28 @@ export async function ensureNotificationsScheduled(
       });
     }
 
+    // 09:00 on the LAST day of each month — both phones. expo-notifications
+    // can't natively express "last day of month", so we schedule one-shot
+    // reminders for this month and next month at app launch; the next launch
+    // re-fills the queue.
+    const now = new Date();
+    for (let offset = 0; offset <= 1; offset++) {
+      const m = now.getMonth() + offset;
+      const ref = new Date(now.getFullYear(), m + 1, 0, 9, 0, 0); // last day, 09:00
+      if (ref.getTime() <= now.getTime()) continue;
+      await Notifications.scheduleNotificationAsync({
+        identifier: `momoney-eom-${ref.getFullYear()}-${ref.getMonth() + 1}`,
+        content: {
+          title: 'MoMoney 🐒',
+          body: 'Sudah investasi bulan ini belum? 🤔',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: ref,
+        } as any,
+      });
+    }
+
     // Android needs a channel so non-default-importance notifications appear.
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {

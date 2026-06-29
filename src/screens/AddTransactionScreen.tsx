@@ -25,6 +25,7 @@ import {
   sourcesForPerson,
   spacing,
   WHO,
+  whoOf,
 } from '../theme';
 import {
   CategoryId,
@@ -47,6 +48,7 @@ interface EditableItem {
   description: string;
   amount: string;
   category: CategoryId;
+  who: WhoId;
 }
 
 /** Default "who" depends on the platform: Rizal's Android vs Rosi's iOS. */
@@ -173,10 +175,12 @@ export default function AddTransactionScreen() {
       description: it.description,
       amount: formatAmountInput(String(Math.round(it.amount))),
       category: it.category,
+      who: it.who ?? draft?.who ?? DEFAULT_WHO,
     }))
   );
   // Index of the item whose category picker is open (null = closed).
   const [pickerFor, setPickerFor] = useState<number | null>(null);
+  const [whoPickerFor, setWhoPickerFor] = useState<number | null>(null);
 
   const amountValue = useMemo(() => toAmount(amount), [amount]);
   const itemsSum = useMemo(
@@ -199,10 +203,13 @@ export default function AddTransactionScreen() {
   const updateItem = (idx: number, patch: Partial<EditableItem>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   const addItem = () =>
-    setItems((prev) => [...prev, { id: uid(), description: '', amount: '', category }]);
+    setItems((prev) => [
+      ...prev,
+      { id: uid(), description: '', amount: '', category, who },
+    ]);
   // Convert a simple entry into a basket: seed the first item from what's typed.
   const startItemizing = () =>
-    setItems([{ id: uid(), description: '', amount: amount || '', category }]);
+    setItems([{ id: uid(), description: '', amount: amount || '', category, who }]);
   const removeItem = (idx: number) =>
     setItems((prev) => prev.filter((_, i) => i !== idx));
 
@@ -257,16 +264,19 @@ export default function AddTransactionScreen() {
         description: it.description.trim(),
         amount: Math.round(toAmount(it.amount)),
         category: it.category,
+        who: it.who,
       }));
     const useItems = !isIncome && cleanedItems.length > 0;
 
-    // When itemized, amount = sum of items and the parent category is the one
-    // with the biggest item total (used only for the list-row icon; budgets
-    // still split per item).
+    // When itemized, the parent's amount is whatever the user typed (which
+    // defaults to the items sum but can be more — extra goes to Biaya/Pajak —
+    // or less — difference goes to Diskon). The parent's category is set to
+    // the one with the biggest item total, just for the list-row icon.
     let finalAmount = Math.round(amountValue);
     let finalCategory = category;
     if (useItems) {
-      finalAmount = cleanedItems.reduce((s, it) => s + it.amount, 0);
+      const itemsTotal = cleanedItems.reduce((s, it) => s + it.amount, 0);
+      finalAmount = amountValue > 0 ? Math.round(amountValue) : itemsTotal;
       const totals = {} as Record<CategoryId, number>;
       cleanedItems.forEach((it) => {
         totals[it.category] = (totals[it.category] ?? 0) + it.amount;
@@ -447,28 +457,37 @@ export default function AddTransactionScreen() {
         <>
         {/* Amount */}
         <Text style={styles.label}>Jumlah</Text>
+        <View style={styles.amountRow}>
+          <Text style={styles.currency}>Rp</Text>
+          <TextInput
+            value={amount}
+            onChangeText={(t) => setAmount(formatAmountInput(t))}
+            keyboardType="number-pad"
+            placeholder={itemized ? formatAmountInput(String(itemsSum)) || '0' : '0'}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
+          />
+        </View>
         {itemized ? (
-          <>
-            <View style={[styles.amountRow, { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight }]}>
-              <Text style={styles.currency}>Rp</Text>
-              <Text style={styles.amountInput}>{money(itemsSum).replace('Rp', '')}</Text>
-              <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
-            </View>
-            <Text style={styles.autoHint}>Otomatis dijumlah dari {validItemCount} item di bawah.</Text>
-          </>
-        ) : (
-          <View style={styles.amountRow}>
-            <Text style={styles.currency}>Rp</Text>
-            <TextInput
-              value={amount}
-              onChangeText={(t) => setAmount(formatAmountInput(t))}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
-            />
-          </View>
-        )}
+          (() => {
+            const total = amountValue > 0 ? amountValue : itemsSum;
+            const remainder = total - itemsSum;
+            if (Math.abs(remainder) < 1) {
+              return (
+                <Text style={styles.autoHint}>
+                  Sama dengan jumlah {validItemCount} item di bawah.
+                </Text>
+              );
+            }
+            return (
+              <Text style={[styles.autoHint, { color: remainder > 0 ? colors.danger : colors.success }]}>
+                {remainder > 0
+                  ? `+ ${money(remainder)} dicatat sebagai Biaya / Pajak Transaksi`
+                  : `− ${money(-remainder)} dicatat sebagai Diskon`}
+              </Text>
+            );
+          })()
+        ) : null}
 
         {/* Transaction name */}
         <Text style={styles.label}>Nama Transaksi</Text>
@@ -693,20 +712,16 @@ export default function AddTransactionScreen() {
 
         {!isIncome && itemized ? (
         <>
-        <View style={styles.itemsHeader}>
-          <Text style={[styles.label, { marginTop: 0 }]}>Rincian Item</Text>
-          <TouchableOpacity onPress={addItem} style={styles.addItemBtn}>
-            <Ionicons name="add" size={16} color={colors.primary} />
-            <Text style={styles.addItemText}>Tambah item</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.label]}>Rincian Item</Text>
         <Text style={styles.itemsHint}>
-          Tiap item punya kategori sendiri. Jumlah transaksi otomatis = total item.
-          Hapus semua item untuk kembali ke satu kategori.
+          Tiap item punya kategori dan untuk-siapa sendiri. Jumlah transaksi
+          bisa berbeda dari total item — selisihnya jadi Biaya/Pajak Transaksi
+          atau Diskon.
         </Text>
 
         {items.map((it, idx) => {
           const cat = categoryOf(it.category);
+          const itemWho = whoOf(it.who);
           return (
             <View key={it.id} style={styles.itemCard}>
               <View style={styles.itemTopRow}>
@@ -743,13 +758,27 @@ export default function AddTransactionScreen() {
                     {cat.label}
                   </Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setWhoPickerFor(idx)}
+                  activeOpacity={0.8}
+                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
+                >
+                  <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
+                    {itemWho.emoji} {itemWho.label}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           );
         })}
 
+        <TouchableOpacity onPress={addItem} style={styles.addItemBigBtn} activeOpacity={0.85}>
+          <Ionicons name="add" size={18} color={colors.primary} />
+          <Text style={styles.addItemBigText}>Tambah Item</Text>
+        </TouchableOpacity>
+
         <View style={styles.itemsTotalRow}>
-          <Text style={styles.itemsTotalLabel}>Jumlah transaksi</Text>
+          <Text style={styles.itemsTotalLabel}>Total item</Text>
           <Text style={styles.itemsTotalValue}>{money(itemsSum)}</Text>
         </View>
         </>
@@ -830,6 +859,33 @@ export default function AddTransactionScreen() {
                 </TouchableOpacity>
                 );
               })}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Per-item "Untuk Siapa" picker */}
+      <Modal visible={whoPickerFor !== null} transparent animationType="fade" onRequestClose={() => setWhoPickerFor(null)}>
+        <View style={styles.modalWrap}>
+          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setWhoPickerFor(null)} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+            <Text style={styles.sheetTitle}>Untuk siapa item ini?</Text>
+            <View style={styles.chipWrap}>
+              {WHO.map((w) => (
+                <TouchableOpacity
+                  key={w.id}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (whoPickerFor !== null) updateItem(whoPickerFor, { who: w.id });
+                    setWhoPickerFor(null);
+                  }}
+                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
+                >
+                  <Text style={[styles.chipText, { color: colors.text }]}>
+                    {w.emoji} {w.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
@@ -1028,6 +1084,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   addItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  addItemBigBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    marginTop: spacing.sm,
+  },
+  addItemBigText: { fontSize: 14, fontWeight: '800', color: colors.primary },
   addItemText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   itemsHint: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm },
   itemCard: {

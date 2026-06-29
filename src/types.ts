@@ -18,6 +18,7 @@ export type CategoryId =
   | 'investasi_luar' // Investasi Luar (outside investment)
   | 'biaya_pajak' // Biaya / Pajak Transaksi (covers transfer fees + extras)
   | 'diskon' // Diskon — counts as negative spending on a multi-item parent
+  | 'rugi_investasi' // Rugi Investasi (auto, when an investment balance is lowered)
   | 'penyesuaian_saldo' // Penyesuaian Saldo (manual balance correction, down)
   | 'transfer_out' // Internal: transfer leg leaving an account
   | 'lainnya'; // Lainnya (others)
@@ -103,6 +104,8 @@ export interface LineItem {
   amount: number;
   /** Each scanned/added item carries its own category. */
   category: CategoryId;
+  /** Each item can be for a different person; defaults to the parent's who. */
+  who?: WhoId;
 }
 
 export interface Transaction {

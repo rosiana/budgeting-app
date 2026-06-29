@@ -25,6 +25,7 @@ export const DEFAULT_BUDGETS: Budgets = {
   // really budgeted against; also hidden from Anggaran.
   biaya_pajak: 0,
   diskon: 0,
+  rugi_investasi: 0,
   penyesuaian_saldo: 0,
   transfer_out: 0,
   lainnya: 1_000_000,
