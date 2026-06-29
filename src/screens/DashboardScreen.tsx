@@ -21,6 +21,7 @@ import {
   txForMonth,
 } from '../store/selectors';
 import {
+  ANGGARAN_CATEGORIES,
   budgetStatusColor,
   categoryOf,
   colors,
@@ -42,7 +43,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, creditCard, openingBalances, privacyMode, setPrivacyMode } = useBudget();
+  const { transactions, budgets, disabledBudgets, creditCard, openingBalances, privacyMode, setPrivacyMode } = useBudget();
   const money = (n: number) => maybeMask(formatCurrency(n), privacyMode);
 
   const totalSaldo = useMemo(
@@ -53,17 +54,25 @@ export default function DashboardScreen() {
 
   const mKey = currentMonthKey();
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
-  const spent = useMemo(() => totalSpent(monthTx), [monthTx]);
-  const totalBudget = useMemo(
-    () => Object.values(budgets).reduce((s, b) => s + b, 0),
-    [budgets]
+  const byCatAll = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
+  // Anggaran totals/warnings only count pickable categories the user hasn't
+  // switched off — system-internal categories and disabled ones are excluded.
+  const byCat = useMemo(
+    () =>
+      byCatAll.filter(
+        (c) => ANGGARAN_CATEGORIES.includes(c.category) && !disabledBudgets.includes(c.category)
+      ),
+    [byCatAll, disabledBudgets]
   );
-  const byCat = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
+  const spent = byCat.reduce((s, c) => s + c.spent, 0);
+  const totalBudget = byCat.reduce((s, c) => s + c.budget, 0);
   const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
   const remaining = totalBudget - spent;
-  const topCats = byCat.filter((c) => c.spent > 0).slice(0, 4);
+  // Donut breakdown uses ALL real spending (every spent category, not just
+  // budgeted ones) so the % math is meaningful.
+  const topCats = byCatAll.filter((c) => c.spent > 0).slice(0, 4);
   // Anggaran preview: top 5 categories by how full the budget is.
   const budgetList = useMemo(
     () => [...byCat].sort((a, b) => b.pct - a.pct).slice(0, 5),
@@ -207,7 +216,7 @@ export default function DashboardScreen() {
         <Card style={{ marginBottom: spacing.xl }}>
           {spent > 0 ? (
             <View style={styles.breakdown}>
-              <CategoryDonut data={byCat} total={spent} />
+              <CategoryDonut data={byCat} total={spent} centerLabel="Total" centerText={money(spent)} />
               <View style={styles.legend}>
                 {topCats.map((c) => {
                   const cat = categoryOf(c.category);

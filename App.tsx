@@ -1,18 +1,23 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { applyRoundedFont, useAppFonts } from './src/fonts';
 import RootNavigator from './src/navigation/RootNavigator';
 import { BudgetProvider, useBudget } from './src/store/BudgetContext';
-import { colors } from './src/theme';
+import { colors, DEVICE_PERSON } from './src/theme';
+import { ensureNotificationsScheduled } from './src/utils/notifications';
 
 applyRoundedFont();
 
 function Gate({ children }: { children: React.ReactNode }) {
   const { ready } = useBudget();
+  // Schedule local reminders once the app is hydrated.
+  useEffect(() => {
+    if (ready) ensureNotificationsScheduled(DEVICE_PERSON);
+  }, [ready]);
   if (!ready) {
     return (
       <View style={styles.loading}>

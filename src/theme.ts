@@ -71,32 +71,42 @@ export const CATEGORIES: Category[] = [
   { id: 'fashion', label: 'Fashion', icon: 'shirt', color: '#D6749B' },
   { id: 'rokok', label: 'Rokok & Alkohol', icon: 'wine', color: '#8C6242' },
   { id: 'sedekah', label: 'Sedekah & Hadiah', icon: 'heart', color: '#EC6F9C' },
+  { id: 'kesehatan', label: 'Kesehatan', icon: 'medkit', color: '#E26B6B' },
   { id: 'investasi_luar', label: 'Investasi Luar', icon: 'business', color: '#19B6A7' },
   // Internal/system categories — hidden from the main category-filter strip
-  // (still usable on individual transactions) since they are produced by
-  // transfers and balance adjustments rather than picked by the user.
-  { id: 'biaya_transfer', label: 'Biaya Transfer', icon: 'swap-horizontal', color: '#7E8B91' },
+  // and from Anggaran (they're produced by transfers / multi-item extras /
+  // balance adjustments rather than picked by the user).
+  { id: 'biaya_pajak', label: 'Biaya / Pajak Transaksi', icon: 'receipt', color: '#7E8B91' },
+  { id: 'diskon', label: 'Diskon', icon: 'pricetags', color: '#2E9E5B' },
   { id: 'penyesuaian_saldo', label: 'Penyesuaian Saldo', icon: 'sync', color: '#7E8B91' },
   { id: 'transfer_out', label: 'Transfer', icon: 'arrow-up-circle', color: '#4C8BF5' },
   { id: 'lainnya', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
 ];
 
 /** Categories that are user-pickable on the transaction form (the rest are
- *  produced internally by Transfer / Saldo adjustments). */
+ *  produced internally by Transfer / multi-item extras / Saldo adjustments). */
 export const PICKABLE_CATEGORIES: CategoryId[] = [
   'cicilan', 'utilitas', 'transportasi', 'skincare', 'makan', 'langganan',
   'art', 'sekolah', 'fun', 'rumah', 'perabot', 'fashion', 'rokok', 'sedekah',
-  'investasi_luar', 'lainnya',
+  'kesehatan', 'investasi_luar', 'lainnya',
 ];
 
-/** Categories that produce real spending (excluded: transfer legs). */
-export const SYSTEM_CATEGORIES: CategoryId[] = ['transfer_out'];
+/** Categories that show up in Anggaran — system categories are excluded. */
+export const ANGGARAN_CATEGORIES: CategoryId[] = PICKABLE_CATEGORIES;
 
-/** Old category ids → current ones (Listrik/Air/Internet merged into Utilitas). */
+/** System-only categories (transfers/extras/adjustments). */
+export const SYSTEM_CATEGORIES: CategoryId[] = [
+  'biaya_pajak', 'diskon', 'penyesuaian_saldo', 'transfer_out',
+];
+
+/** Old category ids → current ones. */
 export const CATEGORY_MIGRATION: Record<string, CategoryId> = {
   listrik: 'utilitas',
   air: 'utilitas',
   internet: 'utilitas',
+  // biaya_transfer was merged into biaya_pajak (covers transfer fees AND
+  // multi-item extras like tax/service charges).
+  biaya_transfer: 'biaya_pajak',
 };
 
 export function migrateCategory(id: string): CategoryId {
@@ -124,9 +134,10 @@ export function categoryOf(id: CategoryId): Category {
 
 export const INCOME_CATEGORIES: IncomeCategory[] = [
   { id: 'gaji', label: 'Gaji', icon: 'cash', color: '#2E9E5B' },
-  { id: 'bonus', label: 'Bonus', icon: 'gift', color: '#F4A259' },
+  { id: 'bonus', label: 'Bonus & Hadiah', icon: 'gift', color: '#F4A259' },
   { id: 'investasi', label: 'Untung Investasi', icon: 'trending-up', color: '#19B6A7' },
   { id: 'jualan', label: 'Jualan', icon: 'pricetag', color: '#4C8BF5' },
+  // 'bunga' is retired from the picker but kept in the map for legacy rows.
   { id: 'bunga', label: 'Bunga', icon: 'add-circle', color: '#7A6BF5' },
   { id: 'transfer_in', label: 'Transfer Masuk', icon: 'arrow-down-circle', color: '#4C8BF5' },
   { id: 'penyesuaian_saldo_in', label: 'Penyesuaian Saldo', icon: 'sync', color: '#7E8B91' },
@@ -134,9 +145,9 @@ export const INCOME_CATEGORIES: IncomeCategory[] = [
 ];
 
 /** Income categories user can manually pick (excludes internal: transfer_in,
- *  penyesuaian_saldo_in). */
+ *  penyesuaian_saldo_in, and the retired 'bunga'). */
 export const PICKABLE_INCOME_CATEGORIES: IncomeCategoryId[] = [
-  'gaji', 'bonus', 'investasi', 'jualan', 'bunga', 'lainnya_in',
+  'gaji', 'bonus', 'investasi', 'jualan', 'lainnya_in',
 ];
 
 export const INCOME_CATEGORY_MAP: Record<IncomeCategoryId, IncomeCategory> =
@@ -183,6 +194,7 @@ export const SOURCES: Source[] = [
   { id: 'bibit', label: 'Bibit', icon: 'trending-up', color: '#1AAE6F', owner: 'rosi' },
   { id: 'ajaib', label: 'Ajaib', icon: 'trending-up', color: '#5A4BE6', owner: 'rosi' },
   { id: 'emas', label: 'Tring', icon: 'trending-up', color: '#D4A017', owner: 'rosi' },
+  { id: 'flazz', label: 'Flazz', icon: 'card', color: '#1F73D9', owner: 'rosi' },
   { id: 'tunai_rosi', label: 'Tunai', icon: 'cash', color: '#2E9E5B', owner: 'rosi' },
   // Rizal's accounts
   { id: 'bsi', label: 'BSI', icon: 'card', color: '#00936B', owner: 'rizal' },

@@ -6,14 +6,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CatIcon, Card, GridBg, MonthNav, PrimaryButton, PrivacyEye, ProgressBar } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import { spendByCategory, totalSpent, txForMonth } from '../store/selectors';
-import { budgetStatusColor, categoryOf, colors, fill, radius, spacing } from '../theme';
+import {
+  ANGGARAN_CATEGORIES,
+  budgetStatusColor,
+  categoryOf,
+  colors,
+  fill,
+  radius,
+  spacing,
+} from '../theme';
 import { CategoryId } from '../types';
 import { currentMonthKey, formatCompact, formatCurrency, formatMonth, shiftMonth } from '../utils/format';
 import { useMoney } from '../utils/money';
 
 export default function BudgetsScreen() {
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, setBudget } = useBudget();
+  const { transactions, budgets, disabledBudgets, setBudget, toggleBudget } = useBudget();
   const money = useMoney();
   const [editing, setEditing] = useState<CategoryId | null>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -21,9 +29,21 @@ export default function BudgetsScreen() {
   const [month, setMonth] = useState(currentMonthKey());
   const mKey = month;
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
-  const byCat = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
-  const spent = totalSpent(monthTx);
-  const totalBudget = Object.values(budgets).reduce((s, b) => s + b, 0);
+  const isDisabled = (c: CategoryId) => disabledBudgets.includes(c);
+
+  // Every pickable category appears in the list (so the user can toggle each).
+  // System-internal categories never appear here.
+  const byCatAll = useMemo(
+    () =>
+      spendByCategory(monthTx, budgets).filter((c) =>
+        ANGGARAN_CATEGORIES.includes(c.category)
+      ),
+    [monthTx, budgets]
+  );
+  // Totals/warnings only count enabled categories.
+  const byCat = byCatAll.filter((c) => !isDisabled(c.category));
+  const spent = byCat.reduce((s, c) => s + c.spent, 0);
+  const totalBudget = byCat.reduce((s, c) => s + c.budget, 0);
   const overCount = byCat.filter((c) => c.budget > 0 && c.spent > c.budget).length;
 
   const openEditor = (cat: CategoryId) => {
@@ -81,43 +101,64 @@ export default function BudgetsScreen() {
           ) : null}
         </Card>
 
-        <Text style={styles.hint}>Ketuk kategori untuk mengubah batas bulanannya.</Text>
+        <Text style={styles.hint}>
+          Ketuk kategori untuk mengubah batas bulanannya. Matikan kategori yang
+          tidak ingin dianggarkan.
+        </Text>
 
-        {byCat.map((c) => {
+        {byCatAll.map((c) => {
           const cat = categoryOf(c.category);
+          const disabled = isDisabled(c.category);
           const over = c.budget > 0 && c.spent > c.budget;
           return (
             <TouchableOpacity
               key={c.category}
-              activeOpacity={0.7}
-              onPress={() => openEditor(c.category)}
-              style={styles.catCard}
+              activeOpacity={disabled ? 1 : 0.7}
+              onPress={() => !disabled && openEditor(c.category)}
+              style={[styles.catCard, disabled && styles.catCardOff]}
             >
               <View style={styles.catHead}>
                 <View style={styles.catName}>
                   <CatIcon name={cat.icon} set={cat.iconSet} size={18} color={cat.color} />
                   <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
                 </View>
-                <Text style={styles.catAmt}>
-                  {money(c.spent)}
-                  <Text style={styles.catAmtMuted}> / {money(c.budget)}</Text>
-                </Text>
+                <View style={styles.catRight}>
+                  {!disabled ? (
+                    <Text style={styles.catAmt}>
+                      {money(c.spent)}
+                      <Text style={styles.catAmtMuted}> / {money(c.budget)}</Text>
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() => toggleBudget(c.category)}
+                    hitSlop={8}
+                    style={[styles.toggleTrack, !disabled && styles.toggleTrackOn]}
+                  >
+                    <View style={[styles.toggleThumb, !disabled && styles.toggleThumbOn]} />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={{ marginVertical: 8 }}>
-                <ProgressBar pct={c.pct} color={budgetStatusColor(c.pct)} height={10} />
-              </View>
-              <Text
-                style={[
-                  styles.catStatus,
-                  { color: c.budget === 0 ? colors.textMuted : budgetStatusColor(c.pct) },
-                ]}
-              >
-                {c.budget === 0
-                  ? 'Belum ada batas'
-                  : over
-                  ? `Lewat ${money(c.spent - c.budget)}`
-                  : `Sisa ${money(c.budget - c.spent)}`}
-              </Text>
+              {!disabled ? (
+                <>
+                  <View style={{ marginVertical: 8 }}>
+                    <ProgressBar pct={c.pct} color={budgetStatusColor(c.pct)} height={10} />
+                  </View>
+                  <Text
+                    style={[
+                      styles.catStatus,
+                      { color: c.budget === 0 ? colors.textMuted : budgetStatusColor(c.pct) },
+                    ]}
+                  >
+                    {c.budget === 0
+                      ? 'Belum ada batas'
+                      : over
+                      ? `Lewat ${money(c.spent - c.budget)}`
+                      : `Sisa ${money(c.budget - c.spent)}`}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.catDisabledHint}>Dimatikan dari anggaran</Text>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -205,12 +246,22 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.md,
   },
+  catCardOff: { opacity: 0.55 },
   catHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   catName: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   catLabel: { fontSize: 16, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  catRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   catAmt: { fontSize: 14, fontWeight: '800', color: colors.text },
   catAmtMuted: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
   catStatus: { fontSize: 13, fontWeight: '700' },
+  catDisabledHint: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 4 },
+  toggleTrack: {
+    width: 36, height: 22, borderRadius: 11,
+    backgroundColor: colors.border, padding: 2, justifyContent: 'center',
+  },
+  toggleTrackOn: { backgroundColor: colors.primary },
+  toggleThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.card },
+  toggleThumbOn: { alignSelf: 'flex-end' },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...fill, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {

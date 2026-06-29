@@ -63,6 +63,7 @@
         }
       ],
       "./plugins/withDisableScriptSandboxing",
+      "./plugins/withNoPushEntitlement",
       "@react-native-community/datetimepicker"
     ],
     "extra": {

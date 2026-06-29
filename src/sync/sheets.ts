@@ -15,6 +15,7 @@ export interface SyncConfig {
 export interface SyncData {
   transactions: Transaction[];
   budgets: Budgets;
+  disabledBudgets?: import('../types').CategoryId[];
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;
   settingsUpdatedAt: number;

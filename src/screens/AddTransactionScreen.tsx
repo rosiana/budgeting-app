@@ -112,6 +112,27 @@ export default function AddTransactionScreen() {
     return list;
   }, [source]);
 
+  // Pick the merchant name AND auto-fill category/source/who from the latest
+  // transaction with the same name. The user can still change any field.
+  const applySuggestion = (name: string) => {
+    setMerchant(name);
+    const lower = name.trim().toLowerCase();
+    let best: typeof transactions[number] | null = null;
+    for (const t of transactions) {
+      if ((t.merchant || '').trim().toLowerCase() !== lower) continue;
+      const ts = t.updatedAt ?? t.createdAt ?? 0;
+      if (!best || ts > (best.updatedAt ?? best.createdAt ?? 0)) best = t;
+    }
+    if (!best) return;
+    if (best.type === 'income' && best.incomeCategory) setIncomeCategory(best.incomeCategory);
+    if (best.type !== 'income') setCategory(best.category);
+    setWho(best.who);
+    // Only adopt the saved source if the current device owns it.
+    if (sourcesForPerson(DEVICE_PERSON).some((s) => s.id === best!.source)) {
+      setSource(best.source);
+    }
+  };
+
   // Autosuggest transaction names from previously used merchants.
   const nameSuggestions = useMemo(() => {
     const q = merchant.trim().toLowerCase();
@@ -221,7 +242,7 @@ export default function AddTransactionScreen() {
           date,
           merchant: `${fromLabel} → ${toLabel}`,
           amount: transferFee,
-          category: 'biaya_transfer',
+          category: 'biaya_pajak',
           who: 'rumah',
           source: fromSource,
           transferGroup: tg,
@@ -480,7 +501,7 @@ export default function AddTransactionScreen() {
               <TouchableOpacity
                 key={name}
                 style={styles.suggestChip}
-                onPress={() => setMerchant(name)}
+                onPress={() => applySuggestion(name)}
               >
                 <Ionicons name="time-outline" size={12} color={colors.primary} />
                 <Text style={styles.suggestText} numberOfLines={1}>{name}</Text>

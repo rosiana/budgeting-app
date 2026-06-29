@@ -194,25 +194,6 @@ export default function BalancesScreen() {
           <Text style={styles.totalCaption}>di {shownBalances.length} sumber dana</Text>
         </Card>
 
-        {/* Credit card bill */}
-        <Card style={styles.ccCard}>
-          <View style={styles.ccHead}>
-            <View style={styles.ccTitleRow}>
-              <Ionicons name="card" size={18} color={colors.primary} />
-              <Text style={styles.ccTitle}>Tagihan Kartu Kredit</Text>
-            </View>
-            <Text style={styles.ccPaySrc}>bayar dari {sourceOf(creditCard.paymentSource).label}</Text>
-          </View>
-          <Text style={styles.ccOutstanding}>{money(cc.outstanding)}</Text>
-          {cc.outstanding > 0 ? (
-            <Text style={styles.ccDue}>
-              Jatuh tempo {formatDateShort(cc.nextDue)}
-            </Text>
-          ) : (
-            <Text style={styles.ccDue}>Tidak ada tagihan berjalan 🎉</Text>
-          )}
-        </Card>
-
         {/* Pending reimbursements */}
         {pending.length > 0 ? (
           <Card style={styles.reimCard}>
@@ -271,9 +252,22 @@ export default function BalancesScreen() {
           })}
         </Card>
 
-        {/* Credit card settings */}
-        <SectionTitle>Pengaturan Kartu Kredit</SectionTitle>
+        {/* Credit card — current bill + settings, combined */}
+        <SectionTitle>Kartu Kredit</SectionTitle>
         <Card>
+          {/* Current outstanding bill, at the top of the same card. */}
+          <View style={styles.kkBillRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kkBillLabel}>Tagihan berjalan</Text>
+              <Text style={styles.kkBillAmount}>{money(cc.outstanding)}</Text>
+              <Text style={styles.kkBillSub}>
+                {cc.outstanding > 0
+                  ? `Jatuh tempo ${formatDateShort(cc.nextDue)}`
+                  : 'Tidak ada tagihan berjalan 🎉'}
+              </Text>
+            </View>
+          </View>
+
           <View style={styles.paySrcRow}>
             <Ionicons name="card" size={16} color={colors.primary} />
             <Text style={styles.paySrcText}>Dibayar dari BCA</Text>
@@ -298,7 +292,6 @@ export default function BalancesScreen() {
         </Card>
 
         {/* Google Sheet sync */}
-        <View style={{ height: spacing.xl }} />
         <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
         <Card style={{ marginTop: 0 }}>
           <Text style={styles.settingHint}>
@@ -437,9 +430,16 @@ const styles = StyleSheet.create({
     padding: 3,
     marginBottom: spacing.lg,
   },
-  ownerBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+  ownerBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 34,
+  },
   ownerActive: { backgroundColor: colors.card },
-  ownerText: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
+  ownerText: { fontSize: 14, lineHeight: 18, fontWeight: '700', color: colors.textMuted },
   ownerTextActive: { color: colors.primary },
   totalCard: { backgroundColor: colors.primary, borderColor: colors.primary, marginBottom: spacing.md },
   totalLabel: { color: colors.onPrimary, fontSize: 13, fontWeight: '600' },
@@ -482,6 +482,17 @@ const styles = StyleSheet.create({
   tipText: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md, marginTop: -spacing.sm },
   srcBalance: { fontSize: 15, fontWeight: '800', color: colors.text },
   settingLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginBottom: spacing.sm },
+  kkBillRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingBottom: spacing.md,
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  kkBillLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
+  kkBillAmount: { fontSize: 22, color: colors.text, fontWeight: '800', marginTop: 2 },
+  kkBillSub: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
   paySrcRow: {
     flexDirection: 'row',
     alignItems: 'center',

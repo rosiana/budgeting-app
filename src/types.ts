@@ -14,8 +14,10 @@ export type CategoryId =
   | 'fashion' // Fashion
   | 'rokok' // Rokok & Alkohol
   | 'sedekah' // Sedekah & Hadiah (charity & gifts)
+  | 'kesehatan' // Kesehatan (health)
   | 'investasi_luar' // Investasi Luar (outside investment)
-  | 'biaya_transfer' // Biaya Transfer (transfer fee)
+  | 'biaya_pajak' // Biaya / Pajak Transaksi (covers transfer fees + extras)
+  | 'diskon' // Diskon — counts as negative spending on a multi-item parent
   | 'penyesuaian_saldo' // Penyesuaian Saldo (manual balance correction, down)
   | 'transfer_out' // Internal: transfer leg leaving an account
   | 'lainnya'; // Lainnya (others)
@@ -48,6 +50,7 @@ export type SourceId =
   | 'bibit'
   | 'ajaib'
   | 'emas'
+  | 'flazz'
   | 'shopeepay_rosi'
   | 'gopay_rosi'
   | 'tunai_rosi'
@@ -159,6 +162,9 @@ export interface CreditCardConfig {
 export interface AppData {
   transactions: Transaction[];
   budgets: Budgets;
+  /** Categories the user has switched off for the budget — excluded from
+   *  Anggaran totals and the dashboard preview list. */
+  disabledBudgets: CategoryId[];
   /** Starting balance per money source. */
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;

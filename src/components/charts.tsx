@@ -129,14 +129,20 @@ export function WeeklyBars({
   );
 }
 
-/** Donut chart of spending by category, with total in the center. */
+/** Donut chart of spending by category, with total in the center. The center
+ *  label can take a pre-formatted string so the parent decides whether to
+ *  mask it (privacy mode) or how to format it. */
 export function CategoryDonut({
   data,
   total,
+  centerLabel = 'Spent',
+  centerText,
   size = 170,
 }: {
   data: CategorySpend[];
   total: number;
+  centerLabel?: string;
+  centerText?: string;
   size?: number;
 }) {
   const stroke = 26;
@@ -176,8 +182,15 @@ export function CategoryDonut({
         </G>
       </Svg>
       <View style={styles.donutCenter} pointerEvents="none">
-        <Text style={styles.donutLabel}>Spent</Text>
-        <Text style={styles.donutValue}>{formatCompact(total)}</Text>
+        <Text style={styles.donutLabel}>{centerLabel}</Text>
+        <Text
+          style={styles.donutValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.55}
+        >
+          {centerText ?? formatCompact(total)}
+        </Text>
       </View>
     </View>
   );

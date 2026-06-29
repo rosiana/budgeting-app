@@ -62,6 +62,7 @@ type Action =
   | { type: 'updateTransaction'; tx: Transaction }
   | { type: 'deleteTransaction'; id: string }
   | { type: 'setBudget'; category: CategoryId; amount: number }
+  | { type: 'toggleBudget'; category: CategoryId }
   | { type: 'setOpeningBalance'; source: SourceId; amount: number }
   | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> }
   | { type: 'replaceData'; data: SyncData }
@@ -70,6 +71,7 @@ type Action =
 const EMPTY: AppData = {
   transactions: [],
   budgets: DEFAULT_BUDGETS,
+  disabledBudgets: [],
   openingBalances: {},
   creditCard: DEFAULT_CREDIT_CARD,
   settingsUpdatedAt: 0,
@@ -103,6 +105,13 @@ function reducer(state: AppData, action: Action): AppData {
         budgets: { ...state.budgets, [action.category]: action.amount },
         settingsUpdatedAt: now,
       };
+    case 'toggleBudget': {
+      const list = state.disabledBudgets ?? [];
+      const next = list.includes(action.category)
+        ? list.filter((c) => c !== action.category)
+        : [...list, action.category];
+      return { ...state, disabledBudgets: next, settingsUpdatedAt: now };
+    }
     case 'setOpeningBalance':
       return {
         ...state,
@@ -119,6 +128,7 @@ function reducer(state: AppData, action: Action): AppData {
       return {
         transactions: migrateTransactions(action.data.transactions),
         budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(action.data.budgets) },
+        disabledBudgets: action.data.disabledBudgets ?? state.disabledBudgets ?? [],
         openingBalances: migrateOpening(action.data.openingBalances),
         creditCard: {
           ...DEFAULT_CREDIT_CARD,
@@ -133,6 +143,7 @@ function reducer(state: AppData, action: Action): AppData {
       return {
         transactions: [],
         budgets: DEFAULT_BUDGETS,
+        disabledBudgets: [],
         openingBalances: {},
         creditCard: DEFAULT_CREDIT_CARD,
         settingsUpdatedAt: Date.now(),
@@ -146,12 +157,14 @@ interface BudgetContextValue {
   ready: boolean;
   transactions: Transaction[];
   budgets: Budgets;
+  disabledBudgets: CategoryId[];
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;
   addTransaction: (input: NewTransaction) => Transaction;
   updateTransaction: (tx: Transaction) => void;
   deleteTransaction: (id: string) => void;
   setBudget: (category: CategoryId, amount: number) => void;
+  toggleBudget: (category: CategoryId) => void;
   setOpeningBalance: (source: SourceId, amount: number) => void;
   setCreditCard: (patch: Partial<CreditCardConfig>) => void;
   /** Snapshot of the data mirrored to the spreadsheet. */
@@ -250,6 +263,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         const snapshot: SyncData = {
           transactions: stateRef.current.transactions,
           budgets: stateRef.current.budgets,
+          disabledBudgets: stateRef.current.disabledBudgets,
           openingBalances: stateRef.current.openingBalances,
           creditCard: stateRef.current.creditCard,
           settingsUpdatedAt: stateRef.current.settingsUpdatedAt,
@@ -329,6 +343,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
             type: 'hydrate',
             data: {
               budgets: { ...DEFAULT_BUDGETS, ...migrateBudgets(parsed.budgets) },
+              disabledBudgets: parsed.disabledBudgets ?? [],
               transactions: migrateTransactions(parsed.transactions ?? []),
               openingBalances: migrateOpening(parsed.openingBalances),
               creditCard: {
@@ -370,6 +385,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       // Hide tombstones from UI; sync still carries them in syncData.
       transactions: state.transactions.filter((t) => !t.deleted),
       budgets: state.budgets,
+      disabledBudgets: state.disabledBudgets ?? [],
       openingBalances: state.openingBalances,
       creditCard: state.creditCard,
       addTransaction: (input) => {
@@ -381,12 +397,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       updateTransaction: (tx) => dispatch({ type: 'updateTransaction', tx }),
       deleteTransaction: (id) => dispatch({ type: 'deleteTransaction', id }),
       setBudget: (category, amount) => dispatch({ type: 'setBudget', category, amount }),
+      toggleBudget: (category) => dispatch({ type: 'toggleBudget', category }),
       setOpeningBalance: (source, amount) =>
         dispatch({ type: 'setOpeningBalance', source, amount }),
       setCreditCard: (patch) => dispatch({ type: 'setCreditCard', patch }),
       syncData: {
         transactions: state.transactions, // includes tombstones for sync
         budgets: state.budgets,
+        disabledBudgets: state.disabledBudgets,
         openingBalances: state.openingBalances,
         creditCard: state.creditCard,
         settingsUpdatedAt: state.settingsUpdatedAt,

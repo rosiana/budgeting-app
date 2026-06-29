@@ -19,10 +19,12 @@ export const DEFAULT_BUDGETS: Budgets = {
   fashion: 500_000,
   rokok: 500_000,
   sedekah: 500_000,
+  kesehatan: 500_000,
   investasi_luar: 1_000_000,
   // Internal categories — kept at 0 since they're system-generated and not
-  // really budgeted against.
-  biaya_transfer: 0,
+  // really budgeted against; also hidden from Anggaran.
+  biaya_pajak: 0,
+  diskon: 0,
   penyesuaian_saldo: 0,
   transfer_out: 0,
   lainnya: 1_000_000,
@@ -89,6 +91,7 @@ export const SEED_DATA: AppData = {
   transactions: seedTransactions.map((t) => ({ ...t, updatedAt: t.createdAt })),
   budgets: DEFAULT_BUDGETS,
   openingBalances: DEFAULT_OPENING_BALANCES,
+  disabledBudgets: [],
   creditCard: DEFAULT_CREDIT_CARD,
   settingsUpdatedAt: Date.now(),
 };
