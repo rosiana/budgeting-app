@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   donutLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  donutValue: { fontSize: 22, color: colors.text, fontWeight: '800' },
+  donutValue: { fontSize: 16, color: colors.text, fontWeight: '800', paddingHorizontal: 4 },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
   barLabel: { fontSize: 11, color: colors.textMuted, marginTop: 6 },
   barLabelOn: { color: colors.text, fontWeight: '800' },

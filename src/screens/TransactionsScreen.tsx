@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill, PrivacyEye } from '../components/ui';
+import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill, PrivacyEye, SegmentTabs } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import { groupByDate } from '../store/selectors';
@@ -154,75 +154,63 @@ export default function TransactionsScreen() {
       </View>
 
       {/* Mode toggle: all / out / in */}
-      <View style={styles.toggle}>
-        {(['semua', 'pengeluaran', 'pemasukan'] as Mode[]).map((m) => (
-          <TouchableOpacity
-            key={m}
-            onPress={() => setMode(m)}
-            style={[styles.toggleBtn, mode === m && styles.toggleActive]}
-          >
-            {m !== 'semua' ? (
-              <Ionicons
-                name={m === 'pengeluaran' ? 'arrow-up-circle' : 'arrow-down-circle'}
-                size={14}
-                color={
-                  mode === m
-                    ? (m === 'pengeluaran' ? colors.danger : colors.success)
-                    : colors.textMuted
-                }
-                style={{ marginRight: 4 }}
-              />
-            ) : null}
-            <Text style={[styles.toggleText, mode === m && styles.toggleTextActive]} numberOfLines={1}>
-              {m === 'semua' ? 'Semua' : m === 'pengeluaran' ? 'Keluar' : 'Masuk'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.sm }}>
+        <SegmentTabs
+          value={mode}
+          onChange={(v) => setMode(v as Mode)}
+          options={[
+            { id: 'semua', label: 'Semua' },
+            { id: 'pengeluaran', label: 'Keluar', icon: 'arrow-up-circle', activeIconColor: colors.danger },
+            { id: 'pemasukan', label: 'Masuk', icon: 'arrow-down-circle', activeIconColor: colors.success },
+          ]}
+        />
       </View>
 
-      <View style={styles.filterRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContent}
-        >
-          {mode === 'pengeluaran' ? (
-            <>
-              <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
-              {PICKABLE_CATEGORIES.map((id) => {
-                const c = CATEGORY_MAP[id];
-                return (
-                <Pill
-                  key={id}
-                  label={c.label}
-                  icon={c.iconSet ? undefined : (c.icon as any)}
-                  color={c.color}
-                  active={catFilter === id}
-                  onPress={() => setCatFilter(id)}
-                />
-                );
-              })}
-            </>
-          ) : (
-            <>
-              <Pill label="Semua" active={incFilter === 'all'} onPress={() => setIncFilter('all')} />
-              {PICKABLE_INCOME_CATEGORIES.map((id) => {
-                const c = INCOME_CATEGORY_MAP[id];
-                return (
-                <Pill
-                  key={id}
-                  label={c.label}
-                  icon={c.icon as any}
-                  color={colors.success}
-                  active={incFilter === id}
-                  onPress={() => setIncFilter(id)}
-                />
-                );
-              })}
-            </>
-          )}
-        </ScrollView>
-      </View>
+      {mode !== 'semua' ? (
+        <View style={styles.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterContent}
+          >
+            {mode === 'pengeluaran' ? (
+              <>
+                <Pill label="Semua" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
+                {PICKABLE_CATEGORIES.map((id) => {
+                  const c = CATEGORY_MAP[id];
+                  return (
+                    <Pill
+                      key={id}
+                      label={c.label}
+                      icon={c.iconSet ? undefined : (c.icon as any)}
+                      color={c.color}
+                      active={catFilter === id}
+                      onPress={() => setCatFilter(id)}
+                    />
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                <Pill label="Semua" active={incFilter === 'all'} onPress={() => setIncFilter('all')} />
+                {PICKABLE_INCOME_CATEGORIES.map((id) => {
+                  const c = INCOME_CATEGORY_MAP[id];
+                  return (
+                    <Pill
+                      key={id}
+                      label={c.label}
+                      icon={c.icon as any}
+                      color={colors.success}
+                      active={incFilter === id}
+                      onPress={() => setIncFilter(id)}
+                    />
+                  );
+                })}
+              </>
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <SectionList
         sections={sections}

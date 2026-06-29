@@ -72,7 +72,7 @@ export default function DashboardScreen() {
   const remaining = totalBudget - spent;
   // Donut breakdown uses ALL real spending (every spent category, not just
   // budgeted ones) so the % math is meaningful.
-  const topCats = byCatAll.filter((c) => c.spent > 0).slice(0, 4);
+  const topCats = byCatAll.filter((c) => c.spent > 0).slice(0, 5);
   // Anggaran preview: top 5 categories by how full the budget is.
   const budgetList = useMemo(
     () => [...byCat].sort((a, b) => b.pct - a.pct).slice(0, 5),
@@ -197,7 +197,7 @@ export default function DashboardScreen() {
 
         {/* Balance trend over the year */}
         <SectionTitle>Grafik Saldo</SectionTitle>
-        <Card style={{ marginBottom: spacing.xl }}>
+        <Card>
           <Text style={styles.weekTotal}>{money(activePoint.value)}</Text>
           <Text style={styles.weekCaption}>
             total saldo {formatMonth(activeKey)} · ketuk titik bulan
@@ -213,7 +213,7 @@ export default function DashboardScreen() {
 
         {/* Category breakdown */}
         <SectionTitle>Per Kategori</SectionTitle>
-        <Card style={{ marginBottom: spacing.xl }}>
+        <Card>
           {spent > 0 ? (
             <View style={styles.breakdown}>
               <CategoryDonut data={byCat} total={spent} centerLabel="Total" centerText={money(spent)} />
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   budgetWarn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   budgetWarnText: { color: colors.warning, fontSize: 12, fontWeight: '700' },
   cashflowSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-  whoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xl },
+  whoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   whoCard: {
     width: '47%',
     flexGrow: 1,

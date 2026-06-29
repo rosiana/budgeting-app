@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, GridBg, PrimaryButton, PrivacyEye, SectionTitle } from '../components/ui';
+import { Card, GridBg, PrimaryButton, PrivacyEye, SectionTitle, SegmentTabs } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
 import {
   creditCardStatus,
@@ -173,23 +173,25 @@ export default function BalancesScreen() {
         <Text style={styles.title}>Saldo</Text>
 
         {/* Owner filter */}
-        <View style={styles.ownerToggle}>
-          {(['all', 'rosi', 'rizal'] as const).map((o) => (
-            <TouchableOpacity
-              key={o}
-              onPress={() => setOwnerFilter(o)}
-              style={[styles.ownerBtn, ownerFilter === o && styles.ownerActive]}
-            >
-              <Text style={[styles.ownerText, ownerFilter === o && styles.ownerTextActive]}>
-                {o === 'all' ? 'Semua' : o === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ marginBottom: spacing.lg }}>
+          <SegmentTabs
+            value={ownerFilter}
+            onChange={(v) => setOwnerFilter(v as 'all' | 'rosi' | 'rizal')}
+            options={[
+              { id: 'all', label: '🌳 Bersama' },
+              { id: 'rosi', label: '🎀 Rosi' },
+              { id: 'rizal', label: '🕶️ Rizal' },
+            ]}
+          />
         </View>
 
         {/* Total balance */}
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total saldo{ownerFilter !== 'all' ? ` · ${ownerFilter === 'rosi' ? 'Rosi' : 'Rizal'}` : ''}</Text>
+          <Text style={styles.totalLabel}>
+            {ownerFilter === 'all'
+              ? 'Total saldo bersama'
+              : `Total saldo ${ownerFilter === 'rosi' ? 'Rosi' : 'Rizal'}`}
+          </Text>
           <Text style={styles.totalValue}>{money(total)}</Text>
           <Text style={styles.totalCaption}>di {shownBalances.length} sumber dana</Text>
         </Card>
@@ -225,7 +227,7 @@ export default function BalancesScreen() {
         {/* Per-source balances */}
         <SectionTitle>Per Sumber Dana</SectionTitle>
         <Text style={styles.tipText}>Ketuk rekening untuk menyesuaikan saldo.</Text>
-        <Card style={{ marginBottom: spacing.xl }}>
+        <Card>
           {displayRows.map((row, i) => {
             const single = row.sources.length === 1;
             return (
@@ -423,7 +425,7 @@ function DayStepper({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
-  ownerToggle: {
+  _unusedOwnerToggle: {
     flexDirection: 'row',
     backgroundColor: colors.border,
     borderRadius: radius.pill,
@@ -445,14 +447,14 @@ const styles = StyleSheet.create({
   totalLabel: { color: colors.onPrimary, fontSize: 13, fontWeight: '600' },
   totalValue: { color: colors.white, fontSize: 32, fontWeight: '800', marginTop: 2 },
   totalCaption: { color: colors.onPrimary, fontSize: 12, marginTop: 4 },
-  ccCard: { marginBottom: spacing.xl },
+  ccCard: {},
   ccHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   ccTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ccTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   ccPaySrc: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   ccOutstanding: { fontSize: 26, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
   ccDue: { fontSize: 13, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
-  reimCard: { marginBottom: spacing.xl },
+  reimCard: {},
   reimTotal: { fontSize: 16, fontWeight: '800', color: colors.accent },
   reimRow: {
     flexDirection: 'row',

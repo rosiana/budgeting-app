@@ -7,7 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CatIcon, PrimaryButton } from '../components/ui';
+import { CatIcon, PrimaryButton, SegmentTabs } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
 import {
@@ -314,7 +314,7 @@ export default function AddTransactionScreen() {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.header, { paddingTop: spacing.md }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="close" size={26} color={colors.text} />
         </TouchableOpacity>
@@ -334,26 +334,15 @@ export default function AddTransactionScreen() {
         ) : null}
 
         {/* Expense / Income / Transfer toggle */}
-        <View style={styles.typeToggle}>
-          {(['expense', 'income', 'transfer'] as TxType[]).map((t) => {
-            const active = type === t;
-            const tint =
-              t === 'income' ? colors.success : t === 'transfer' ? colors.primary : colors.danger;
-            const icon =
-              t === 'income' ? 'arrow-down-circle' : t === 'transfer' ? 'swap-horizontal' : 'arrow-up-circle';
-            const label = t === 'income' ? 'Masuk' : t === 'transfer' ? 'Transfer' : 'Keluar';
-            return (
-              <TouchableOpacity
-                key={t}
-                onPress={() => setType(t)}
-                style={[styles.typeBtn, active && { backgroundColor: colors.card }]}
-              >
-                <Ionicons name={icon as any} size={18} color={active ? tint : colors.textMuted} />
-                <Text style={[styles.typeText, active && { color: tint }]}>{label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <SegmentTabs
+          value={type}
+          onChange={(v) => setType(v as TxType)}
+          options={[
+            { id: 'expense', label: 'Keluar', icon: 'arrow-up-circle', activeIconColor: colors.danger },
+            { id: 'income', label: 'Masuk', icon: 'arrow-down-circle', activeIconColor: colors.success },
+            { id: 'transfer', label: 'Transfer', icon: 'swap-horizontal', activeIconColor: colors.primary },
+          ]}
+        />
 
         {/* Transfer subform */}
         {isTransfer ? (
@@ -377,24 +366,19 @@ export default function AddTransactionScreen() {
             </View>
 
             <Text style={styles.label}>Ke (akun)</Text>
-            <View style={styles.typeToggle}>
-              {([DEVICE_PERSON, otherPerson] as const).map((p) => {
-                const a = toSourcesPerson === p;
-                return (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => {
-                      setToSourcesPerson(p);
-                      const list = sourcesForPerson(p).filter((s) => s.id !== fromSource);
-                      if (list[0]) setToSource(list[0].id);
-                    }}
-                    style={[styles.typeBtn, a && { backgroundColor: colors.card }]}
-                  >
-                    <Text style={[styles.typeText, a && { color: colors.primary }]}>{p === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal'}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <SegmentTabs
+              value={toSourcesPerson}
+              onChange={(v) => {
+                const p = v as 'rosi' | 'rizal';
+                setToSourcesPerson(p);
+                const list = sourcesForPerson(p).filter((s) => s.id !== fromSource);
+                if (list[0]) setToSource(list[0].id);
+              }}
+              options={[
+                { id: DEVICE_PERSON, label: DEVICE_PERSON === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal' },
+                { id: otherPerson, label: otherPerson === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal' },
+              ]}
+            />
             <View style={[styles.chipWrap, { marginTop: spacing.sm }]}>
               {transferToList.map((s) => {
                 const active = toSource === s.id;

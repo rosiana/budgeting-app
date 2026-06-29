@@ -8,6 +8,61 @@ import { colors, fill, radius, spacing } from '../theme';
 import { IconSet } from '../types';
 
 /**
+ * Pill-shaped segmented tabs used across the app (Saldo owner toggle, Transaksi
+ * mode tabs, Add-Transfer person picker, etc.) so every group has identical
+ * height and typography.
+ */
+export interface SegmentOption {
+  id: string;
+  label: string;
+  /** Optional Ionicons name shown left of the label when this tab is active. */
+  icon?: keyof typeof Ionicons.glyphMap;
+  /** Tint for the active icon (text always uses the primary color). */
+  activeIconColor?: string;
+}
+
+export function SegmentTabs({
+  options,
+  value,
+  onChange,
+}: {
+  options: SegmentOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <View style={styles.segmentRoot}>
+      {options.map((o) => {
+        const active = o.id === value;
+        return (
+          <TouchableOpacity
+            key={o.id}
+            onPress={() => onChange(o.id)}
+            style={[styles.segmentBtn, active && styles.segmentActive]}
+            activeOpacity={0.8}
+          >
+            {active && o.icon ? (
+              <Ionicons
+                name={o.icon}
+                size={14}
+                color={o.activeIconColor ?? colors.primary}
+                style={{ marginRight: 4 }}
+              />
+            ) : null}
+            <Text
+              style={[styles.segmentText, active && styles.segmentActiveText]}
+              numberOfLines={1}
+            >
+              {o.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
  * Floating eye toggle that masks/unmasks every amount across the app. Drop it
  * into each screen so the visibility control is reachable from anywhere.
  *
@@ -343,6 +398,29 @@ const styles = StyleSheet.create({
   },
   monthArrow: { padding: 4 },
   monthLabel: { fontSize: 15, fontWeight: '800', color: colors.text },
+  segmentRoot: {
+    flexDirection: 'row',
+    backgroundColor: colors.border,
+    borderRadius: radius.pill,
+    padding: 3,
+    height: 40,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    paddingHorizontal: 6,
+  },
+  segmentActive: { backgroundColor: colors.card },
+  segmentText: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  segmentActiveText: { color: colors.primary },
   privacyEye: {
     position: 'absolute',
     right: spacing.lg,
@@ -372,7 +450,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.lg,
+    // Single source of truth for the gap between a section title and the
+    // content above it. Cards/grids above titles should NOT add their own
+    // marginBottom or the gap will compound.
+    marginTop: spacing.xl,
     marginBottom: spacing.md,
   },
   sectionTitle: {
