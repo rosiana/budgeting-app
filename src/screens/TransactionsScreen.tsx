@@ -370,75 +370,86 @@ function FilterSheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {/* KAV pushes the sheet above the keyboard; ScrollView lets the body
+       *  scroll so the Nama input + suggestions stay reachable even on a
+       *  small screen with the keyboard open. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
         style={styles.fsWrap}
       >
         <TouchableOpacity style={styles.fsBackdrop} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.fsSheet, { paddingBottom: bottomInset + spacing.xl }]}>
-          <Text style={styles.fsTitle}>Filter Transaksi</Text>
+        <View style={styles.fsSheet}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: bottomInset + spacing.xl }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.fsTitle}>Filter Transaksi</Text>
 
-          <Text style={styles.fsLabel}>Nama Transaksi</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="cari nama..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.fsInput}
-          />
-          {suggestions.length ? (
-            <View style={styles.fsSuggestRow}>
-              {suggestions.map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => setName(s)}
-                  style={styles.fsSuggestChip}
-                >
-                  <Text style={styles.fsSuggestText} numberOfLines={1}>{s}</Text>
-                </TouchableOpacity>
+            <Text style={styles.fsLabel}>Nama Transaksi</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="cari nama..."
+              placeholderTextColor={colors.textMuted}
+              style={styles.fsInput}
+            />
+            {suggestions.length ? (
+              <View style={styles.fsSuggestRow}>
+                {suggestions.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => setName(s)}
+                    style={styles.fsSuggestChip}
+                  >
+                    <Text style={styles.fsSuggestText} numberOfLines={1}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
+            <Text style={styles.fsLabel}>Untuk Siapa</Text>
+            <View style={styles.fsChipRow}>
+              <FsChip label="Semua" active={who === 'all'} onPress={() => setWho('all')} />
+              {WHO.map((w) => (
+                <FsChip
+                  key={w.id}
+                  label={`${w.emoji} ${w.label}`}
+                  color={w.color}
+                  active={who === w.id}
+                  onPress={() => setWho(w.id)}
+                />
               ))}
             </View>
-          ) : null}
 
-          <Text style={styles.fsLabel}>Untuk Siapa</Text>
-          <View style={styles.fsChipRow}>
-            <FsChip label="Semua" active={who === 'all'} onPress={() => setWho('all')} />
-            {WHO.map((w) => (
-              <FsChip
-                key={w.id}
-                label={`${w.emoji} ${w.label}`}
-                color={w.color}
-                active={who === w.id}
-                onPress={() => setWho(w.id)}
-              />
-            ))}
-          </View>
+            <Text style={styles.fsLabel}>Sumber Dana</Text>
+            <View style={styles.fsChipRow}>
+              <FsChip label="Semua" active={source === 'all'} onPress={() => setSource('all')} />
+              {SOURCES.map((s) => (
+                <FsChip
+                  key={s.id}
+                  label={`${whoOf(s.owner).emoji} ${s.label}`}
+                  color={s.color}
+                  sourceIcon={s.icon}
+                  active={source === s.id}
+                  onPress={() => setSource(s.id)}
+                />
+              ))}
+            </View>
 
-          <Text style={styles.fsLabel}>Sumber Dana</Text>
-          <View style={styles.fsChipRow}>
-            <FsChip label="Semua" active={source === 'all'} onPress={() => setSource('all')} />
-            {SOURCES.map((s) => (
-              <FsChip
-                key={s.id}
-                label={`${whoOf(s.owner).emoji} ${s.label}`}
-                color={s.color}
-                active={source === s.id}
-                onPress={() => setSource(s.id)}
-              />
-            ))}
-          </View>
-
-          <View style={styles.fsButtons}>
-            <TouchableOpacity onPress={onClear} style={styles.fsClearBtn}>
-              <Text style={styles.fsClearText}>Reset</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onApply(name, who, source)}
-              style={styles.fsApplyBtn}
-            >
-              <Text style={styles.fsApplyText}>Terapkan</Text>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.fsButtons}>
+              <TouchableOpacity onPress={onClear} style={styles.fsClearBtn}>
+                <Text style={styles.fsClearText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onApply(name, who, source)}
+                style={styles.fsApplyBtn}
+              >
+                <Text style={styles.fsApplyText}>Terapkan</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -450,11 +461,15 @@ function FsChip({
   color,
   active,
   onPress,
+  sourceIcon,
 }: {
   label: string;
   color?: string;
   active: boolean;
   onPress: () => void;
+  /** When set, the chip shows the same colored icon-circle the Saldo screen
+   *  uses for that source, so the filter feels visually consistent. */
+  sourceIcon?: string;
 }) {
   const c = color ?? colors.primary;
   return (
@@ -467,6 +482,11 @@ function FsChip({
           : { borderColor: colors.border, backgroundColor: colors.card },
       ]}
     >
+      {sourceIcon ? (
+        <View style={[styles.fsChipIcon, { backgroundColor: c + '22' }]}>
+          <Ionicons name={sourceIcon as any} size={12} color={c} />
+        </View>
+      ) : null}
       <Text style={[styles.fsChipText, active && { color: c }]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -506,11 +526,23 @@ function TxRow({
   const itemsForCat = matchingItems(tx);
   const itemsList = activeCat && itemsForCat.length ? itemsForCat : tx.items ?? [];
 
+  // Synthetic Diskon / Biaya / Pajak Transaksi row derived from the parent's
+  // total - itemsSum. Shown only in the unfiltered (no activeCat) expanded view
+  // so the totals add up visually.
+  const itemsSum = (tx.items ?? []).reduce((s, it) => s + it.amount, 0);
+  const remainder = tx.amount - itemsSum;
+  const showRemainderRow = !activeCat && isItemized && Math.abs(remainder) >= 1;
+  const remainderCat = remainder > 0 ? categoryOf('biaya_pajak') : categoryOf('diskon');
+  const remainderLabel = remainder > 0 ? 'Biaya / Pajak Transaksi' : 'Diskon';
+
   return (
     <View style={styles.row}>
+      {/* Tap the body to edit (single OR itemized). Long-press deletes. The
+       *  chevron pill on the right is the only thing that toggles expand, so
+       *  the parent shell stays fully editable. */}
       <TouchableOpacity
         activeOpacity={0.7}
-        onPress={() => (isItemized ? onToggleExpand() : onEdit(tx))}
+        onPress={() => onEdit(tx)}
         onLongPress={() => onDelete(tx)}
         style={styles.rowTouch}
       >
@@ -532,10 +564,17 @@ function TxRow({
             </Text>
           </View>
           <View style={styles.rowBottom}>
-            <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
-              <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
-            </View>
-            <Text style={styles.meta}>· {src.label}</Text>
+            {/* Shell of a multi-item tx has no "Untuk Siapa" — each item
+             *  carries its own. Single tx still shows the parent's who. */}
+            {!isItemized ? (
+              <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
+                <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.meta}>
+              {!isItemized ? '· ' : ''}
+              {src.label}
+            </Text>
             {tx.creditCard ? (
               <View style={styles.ccBadge}>
                 <Ionicons name="card" size={10} color={colors.primary} />
@@ -555,41 +594,75 @@ function TxRow({
             ) : null}
             {tx.scanned ? <Ionicons name="scan" size={12} color={colors.primary} /> : null}
             {tx.image ? <Ionicons name="image" size={12} color={colors.textMuted} /> : null}
-            {isItemized ? (
-              <Ionicons
-                name={expanded ? 'chevron-up' : 'chevron-down'}
-                size={14}
-                color={colors.textMuted}
-                style={{ marginLeft: 'auto' }}
-              />
-            ) : null}
           </View>
         </View>
+        {/* Dedicated chevron tap target — toggles expand without triggering
+         *  edit. Sits at the right edge so it doesn't compete with the body. */}
+        {isItemized ? (
+          <TouchableOpacity
+            onPress={onToggleExpand}
+            hitSlop={12}
+            style={styles.chevBtn}
+          >
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textMuted}
+            />
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
 
-      {/* Expanded item list — only for itemized parents. */}
+      {/* Expanded item list — only for itemized parents. Items render in the
+       *  same visual style as a single-tx row, minus Sumber Dana (the parent
+       *  carries it). The synthetic Diskon / Biaya row is appended last. */}
       {isItemized && expanded ? (
         <View style={styles.itemListWrap}>
           {itemsList.map((it, i) => {
             const cat = categoryOf(it.category);
             const w = whoOf(it.who ?? tx.who);
             return (
-              <View key={i} style={styles.itemRow}>
-                <IconCircle icon={cat.icon} iconSet={cat.iconSet} color={cat.color} size={32} />
-                <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                  <Text style={styles.itemRowDesc} numberOfLines={1}>
-                    {it.description}
-                  </Text>
-                  <Text style={styles.itemRowMeta}>
-                    {cat.label} · {w.emoji} {w.label}
-                  </Text>
+              <View key={i} style={styles.itemRowSingle}>
+                <IconCircle icon={cat.icon} iconSet={cat.iconSet} color={cat.color} />
+                <View style={{ flex: 1, marginLeft: spacing.md }}>
+                  <View style={styles.rowTopRow}>
+                    <Text style={styles.merchant} numberOfLines={1}>
+                      {it.description}
+                    </Text>
+                    <Text style={styles.amount}>{money(it.amount)}</Text>
+                  </View>
+                  <View style={styles.rowBottom}>
+                    <View style={[styles.whoTag, { backgroundColor: w.color + '22' }]}>
+                      <Text style={[styles.whoTagText, { color: w.color }]}>{w.label}</Text>
+                    </View>
+                    <Text style={styles.meta}>· {cat.label}</Text>
+                  </View>
                 </View>
-                <Text style={styles.itemRowAmt}>{money(it.amount)}</Text>
               </View>
             );
           })}
-          {/* Show the parent total when looking at a filtered subset so the
-           *  number is interpretable. */}
+          {showRemainderRow ? (
+            <View style={styles.itemRowSingle}>
+              <IconCircle
+                icon={remainderCat.icon}
+                iconSet={remainderCat.iconSet}
+                color={remainderCat.color}
+              />
+              <View style={{ flex: 1, marginLeft: spacing.md }}>
+                <View style={styles.rowTopRow}>
+                  <Text style={styles.merchant} numberOfLines={1}>
+                    {remainderLabel}
+                  </Text>
+                  <Text style={[styles.amount, remainder < 0 && { color: colors.success }]}>
+                    {remainder < 0 ? '−' : ''}{money(Math.abs(remainder))}
+                  </Text>
+                </View>
+                <View style={styles.rowBottom}>
+                  <Text style={styles.meta}>otomatis</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
           {activeCat && itemsForCat.length ? (
             <Text style={styles.itemListTotal}>
               dari total {money(tx.amount)}
@@ -653,8 +726,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    padding: spacing.xl,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    // Cap at ~85% of the viewport so the keyboard has room to push everything
+    // up without clipping the input. The inner ScrollView handles overflow.
+    maxHeight: '85%',
   },
   fsTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
   fsLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md },
@@ -681,10 +757,19 @@ const styles = StyleSheet.create({
   fsChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    gap: 6,
+    paddingLeft: 6,
+    paddingRight: 12,
+    paddingVertical: 5,
     borderRadius: radius.pill,
     borderWidth: 1,
+  },
+  fsChipIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fsChipText: { fontSize: 13, fontWeight: '600', color: colors.text },
   fsButtons: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
@@ -722,6 +807,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   rowTouch: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
+  chevBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
   rowTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemListWrap: {
@@ -732,10 +825,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  itemRow: { flexDirection: 'row', alignItems: 'center', paddingTop: spacing.sm },
-  itemRowDesc: { fontSize: 14, fontWeight: '700', color: colors.text },
-  itemRowMeta: { fontSize: 11, color: colors.textMuted, fontWeight: '600', marginTop: 1 },
-  itemRowAmt: { fontSize: 14, fontWeight: '700', color: colors.text },
+  // Each expanded item renders like a single-tx row (40pt icon, name + amount
+  // on top, whoTag + category meta below). The only difference vs the parent
+  // row is no Sumber Dana (the parent carries it).
+  itemRowSingle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+  },
   itemListTotal: {
     fontSize: 11,
     color: colors.textMuted,
