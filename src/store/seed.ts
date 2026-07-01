@@ -21,7 +21,6 @@ export const DEFAULT_BUDGETS: Budgets = {
   sedekah: 500_000,
   kesehatan: 500_000,
   investasi_luar: 1_000_000,
-  bunga_expense: 300_000,
   // Internal categories — kept at 0 since they're system-generated and not
   // really budgeted against; also hidden from Anggaran.
   biaya_pajak: 0,

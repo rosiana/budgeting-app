@@ -21,7 +21,7 @@ import { useMoney } from '../utils/money';
 
 export default function BudgetsScreen() {
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, disabledBudgets, setBudget, toggleBudget } = useBudget();
+  const { transactions, budgets, disabledBudgets, creditCard, setBudget, toggleBudget } = useBudget();
   const money = useMoney();
   const [editing, setEditing] = useState<CategoryId | null>(null);
   const [draftValue, setDraftValue] = useState('');
@@ -35,10 +35,10 @@ export default function BudgetsScreen() {
   // System-internal categories never appear here.
   const byCatAll = useMemo(
     () =>
-      spendByCategory(monthTx, budgets).filter((c) =>
+      spendByCategory(monthTx, budgets, creditCard).filter((c) =>
         ANGGARAN_CATEGORIES.includes(c.category)
       ),
-    [monthTx, budgets]
+    [monthTx, budgets, creditCard]
   );
   // Totals/warnings only count enabled categories.
   const byCat = byCatAll.filter((c) => !isDisabled(c.category));

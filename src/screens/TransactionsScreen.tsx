@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomActions, Empty, GridBg, IconCircle, MonthNav, Pill, PrivacyEye, SegmentTabs } from '../components/ui';
 import { RootStackParamList } from '../navigation/types';
 import { useBudget } from '../store/BudgetContext';
-import { groupByDate } from '../store/selectors';
+import { groupByDate, isCcPending } from '../store/selectors';
 import {
   CATEGORIES,
   CATEGORY_MAP,
@@ -49,6 +49,11 @@ type DisplayItem = LineItem & {
   metaText?: string | null; // null = hide the "· category" trailing text
   iconOverride?: { name: string; color: string };
   itemType?: 'expense' | 'income';
+  /** Force the amount to render as +green regardless of itemType. Used for
+   *  Transfer moved-legs where both sides should read as "the amount that
+   *  crossed" (green +), but the transfer_out side must still surface in
+   *  the Keluar tab via itemType='expense'. */
+  renderAsIncome?: boolean;
 };
 /** Display-only extensions to Transaction: an aggregated transfer / balance-
  *  adjustment carries a `componentIds` array so deleting the row deletes all
@@ -78,7 +83,7 @@ type Mode = 'semua' | 'pengeluaran' | 'pemasukan';
 export default function TransactionsScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, deleteTransaction } = useBudget();
+  const { transactions, deleteTransaction, creditCard } = useBudget();
   const money = useMoney();
   const [month, setMonth] = useState(currentMonthKey());
   const [mode, setMode] = useState<Mode>('semua');
@@ -142,6 +147,10 @@ export default function TransactionsScreen() {
         const toOwner = whoOf(toSrc.owner);
         const moved = movedOutLeg.amount;
         const items: DisplayItem[] = [
+          // Both moved legs render as +transferAmount green (via
+          // renderAsIncome) — the user wants each side to read as "the
+          // amount that crossed". itemType stays honest though:
+          // transfer_out belongs in Keluar tab, transfer_in in Masuk tab.
           {
             description: `Ke ${toSrc.label}`,
             amount: moved,
@@ -150,8 +159,9 @@ export default function TransactionsScreen() {
             chipLabel: fromOwner.label,
             chipColor: fromOwner.color,
             metaText: fromSrc.label,
-            iconOverride: { name: 'arrow-up-circle', color: colors.danger },
+            iconOverride: { name: 'arrow-up-circle', color: colors.success },
             itemType: 'expense',
+            renderAsIncome: true,
           },
           {
             description: `Dari ${fromSrc.label}`,
@@ -163,10 +173,10 @@ export default function TransactionsScreen() {
             metaText: toSrc.label,
             iconOverride: { name: 'arrow-down-circle', color: colors.success },
             itemType: 'income',
+            renderAsIncome: true,
           },
         ];
-        // Fee = real expense on the source account. Uses the standard chip
-        // (owner + account name) — no more "otomatis" label.
+        // Fee = real expense on the source account.
         if (feeLeg) {
           items.push({
             description: 'Biaya / Pajak Transaksi',
@@ -245,33 +255,66 @@ export default function TransactionsScreen() {
         (s, l) => s + (l.type === 'income' ? l.amount : -l.amount),
         0
       );
-      const items: DisplayItem[] = legs.map((l) => {
-        const s = sourceOf(l.source);
+      // Group multiple adjustments to the SAME account on the same day into
+      // one item, showing the signed net (income − expense) for that
+      // account. Prevents a Penyesuaian Saldo accordion from listing the
+      // same account twice when the user made two corrections that day.
+      const bySource = new Map<SourceId, { signed: number; latestType: 'income' | 'expense'; category: CategoryId }>();
+      for (const l of legs) {
+        const signed = l.type === 'income' ? l.amount : -l.amount;
+        const ex = bySource.get(l.source);
+        if (ex) {
+          ex.signed += signed;
+          // Latest leg wins the tie-break for type / category (used for
+          // metaText — Untung vs Rugi).
+          const isNewer =
+            (l.createdAt ?? l.updatedAt ?? 0) >
+            (legs.find((x) => x.source === l.source && x !== l)?.createdAt ?? 0);
+          if (isNewer) {
+            ex.latestType = l.type === 'income' ? 'income' : 'expense';
+            ex.category = l.category;
+          }
+        } else {
+          bySource.set(l.source, {
+            signed,
+            latestType: l.type === 'income' ? 'income' : 'expense',
+            category: l.category,
+          });
+        }
+      }
+
+      const items: DisplayItem[] = [];
+      for (const [sourceId, entry] of bySource) {
+        // A source that netted to zero (say +50 then −50 on the same day)
+        // isn't worth showing — the user effectively did nothing there.
+        if (Math.abs(entry.signed) < 1) continue;
+        const s = sourceOf(sourceId);
         const owner = whoOf(s.owner);
-        // metaText:
-        //   - Penyesuaian Saldo: null (chip only — user wants no trailing text)
-        //   - Investasi:        "Untung Investasi" / "Rugi Investasi"
+        const displayIsIncome = entry.signed > 0;
         const metaText =
           kind === 'penyesuaian'
             ? null
-            : l.type === 'income'
+            : displayIsIncome
               ? 'Untung Investasi'
               : 'Rugi Investasi';
-        return {
-          description: `${l.type === 'income' ? '+ ' : '− '}${s.label}`,
-          amount: l.amount,
-          category: l.category,
+        items.push({
+          description: `${displayIsIncome ? '+ ' : '− '}${s.label}`,
+          amount: Math.abs(entry.signed),
+          category: entry.category,
           who: owner.id,
           chipLabel: owner.label,
           chipColor: owner.color,
           metaText,
           iconOverride: {
-            name: l.type === 'income' ? 'arrow-down-circle' : 'arrow-up-circle',
-            color: l.type === 'income' ? colors.success : colors.danger,
+            name: displayIsIncome ? 'arrow-down-circle' : 'arrow-up-circle',
+            color: displayIsIncome ? colors.success : colors.danger,
           },
-          itemType: l.type === 'income' ? 'income' : 'expense',
-        } as DisplayItem;
-      });
+          itemType: displayIsIncome ? 'income' : 'expense',
+        });
+      }
+      // Edge case: every same-day pair netted out. Skip the group entirely
+      // — nothing meaningful to render.
+      if (items.length === 0) return;
       // Represent as an expense-typed row (so the shell renders neutrally) but
       // display the signed amount in the merchant amount slot.
       out.push({
@@ -457,15 +500,11 @@ export default function TransactionsScreen() {
         subtotal: g.items.reduce((s, tRaw) => {
           const t = tRaw as DisplayTx;
           if (t.transferSummary || t.componentIds) {
-            // Aggregated. Under a mode filter, use the filtered item sum;
-            // otherwise walk the underlying legs.
             if (activeItemType) {
               const sum = matchingItems(t).reduce((a, it) => a + it.amount, 0);
               return s + (activeItemType === 'income' ? sum : -sum);
             }
             if (t.transferSummary) {
-              // Sum fee (−) + discount (+) legs only. The moved pair cancels
-              // to zero for daily-net purposes.
               const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
               let net = 0;
               for (const l of legs) {
@@ -474,7 +513,6 @@ export default function TransactionsScreen() {
               }
               return s + net;
             }
-            // Daily group: signed net across all legs.
             const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
             const net = legs.reduce(
               (a, l) => a + (l.type === 'income' ? l.amount : -l.amount),
@@ -482,6 +520,12 @@ export default function TransactionsScreen() {
             );
             return s + net;
           }
+          // Regular row. Reimbursed rows and pending CC purchases are
+          // invisible to the day's net — the reimbursed money already came
+          // back, and a pending CC purchase doesn't hit the balance until
+          // its due date or Bayar Tagihan.
+          if (t.reimbursed) return s;
+          if (t.type !== 'income' && isCcPending(t, creditCard)) return s;
           return s + (t.type === 'income' ? t.amount : -rowAmount(t));
         }, 0),
         // Newest first within the day (by createdAt; updatedAt as tiebreaker).
@@ -490,7 +534,7 @@ export default function TransactionsScreen() {
             (b.createdAt ?? b.updatedAt ?? 0) - (a.createdAt ?? a.updatedAt ?? 0)
         ),
       })),
-    [filtered, monthTx, activeCat, activeNameQuery, activeItemType]
+    [filtered, monthTx, creditCard, activeCat, activeNameQuery, activeItemType]
   );
 
   const confirmDelete = (tx: DisplayTx) => {
@@ -1012,6 +1056,13 @@ function TxRow({
             {(() => {
               const isTransferShell = !!tx.transferSummary && !hasItemFilter;
               const useNet = groupNet != null && !hasItemFilter && !isTransferShell;
+              // Reimbursed rows are neither cost nor income — render neutral
+              // (black, no sign) so the reader knows this money came back.
+              if (tx.reimbursed) {
+                return (
+                  <Text style={styles.amount}>{money(shown)}</Text>
+                );
+              }
               if (isTransferShell) {
                 return (
                   <Text style={styles.amount}>{money(shown)}</Text>
@@ -1123,7 +1174,9 @@ function TxRow({
             //   - undefined → fall back to the category label (default)
             const metaText =
               it.metaText === null ? null : it.metaText ?? cat.label;
-            const itemIsIncome = it.itemType === 'income';
+            // `renderAsIncome` overrides the visual sign / color while
+            // leaving `itemType` (which drives Masuk/Keluar filtering) alone.
+            const itemIsIncome = it.renderAsIncome === true || it.itemType === 'income';
             return (
               <View key={i} style={styles.itemRowSingle}>
                 {it.iconOverride ? (

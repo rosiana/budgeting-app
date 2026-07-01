@@ -24,14 +24,26 @@ const isIncome = (t: Transaction) => t.type === 'income';
 // legs are money moving between accounts (not spending), and balance
 // adjustments are corrections — none of these should pollute the
 // spending/budget/income totals.
+// A CC purchase that hasn't hit its due date AND wasn't manually paid via
+// Bayar Tagihan is "pending" — it must not affect the daily subtotal,
+// Anggaran, or Saldo yet. When `cc` isn't supplied we fall back to treating
+// nothing as pending (safe for callers that pre-filter).
+export function isCcPending(t: Transaction, cc?: CreditCardConfig): boolean {
+  return !!t.creditCard && !!cc && !isCcSettled(t, cc);
+}
+
 // NB: we can NO LONGER blanket-exclude rows that carry a transferGroup —
 // a Transfer now saves three legs, and the third (Biaya / Diskon Transfer)
 // IS real spending / income on top of the "money moved" pair. What we
-// exclude is the moved-pair itself, done via the category / incomeCategory
-// check instead.
-const countsAsSpending = (t: Transaction) =>
+// exclude is the moved-pair itself via the category / incomeCategory check.
+//
+// Reimbursed rows also drop out of spending totals: once the money came back
+// the expense effectively neutralized itself. Reimbursable-but-not-yet-
+// reimbursed still counts (the money is out until the payback arrives).
+const countsAsSpending = (t: Transaction, cc?: CreditCardConfig) =>
   isExpense(t) &&
-  !t.reimbursable &&
+  !t.reimbursed &&
+  !isCcPending(t, cc) &&
   t.category !== 'penyesuaian_saldo' &&
   t.category !== 'transfer_out' &&
   t.category !== 'rugi_investasi';
@@ -41,9 +53,14 @@ const countsAsIncome = (t: Transaction) =>
   t.incomeCategory !== 'transfer_in' &&
   t.incomeCategory !== 'investasi';
 
-/** Total expenses (income and reimbursables ignored). */
-export function totalSpent(transactions: Transaction[]): number {
-  return transactions.filter(countsAsSpending).reduce((sum, t) => sum + t.amount, 0);
+/** Total expenses (income, reimbursed, and pending CC purchases ignored). */
+export function totalSpent(
+  transactions: Transaction[],
+  cc?: CreditCardConfig
+): number {
+  return transactions
+    .filter((t) => countsAsSpending(t, cc))
+    .reduce((sum, t) => sum + t.amount, 0);
 }
 
 export function totalIncome(transactions: Transaction[]): number {
@@ -88,10 +105,11 @@ export interface CategorySpend {
 
 export function spendByCategory(
   transactions: Transaction[],
-  budgets: Budgets
+  budgets: Budgets,
+  cc?: CreditCardConfig
 ): CategorySpend[] {
   const totals = {} as Record<CategoryId, number>;
-  for (const t of transactions) if (countsAsSpending(t)) addToCategoryTotals(totals, t);
+  for (const t of transactions) if (countsAsSpending(t, cc)) addToCategoryTotals(totals, t);
   return CATEGORIES.map((c) => {
     const spent = totals[c.id] ?? 0;
     const budget = budgets[c.id] ?? 0;
@@ -126,10 +144,13 @@ export interface WhoSpend {
   spent: number;
 }
 
-export function spendByWho(transactions: Transaction[]): WhoSpend[] {
+export function spendByWho(
+  transactions: Transaction[],
+  cc?: CreditCardConfig
+): WhoSpend[] {
   const totals = {} as Record<WhoId, number>;
   for (const t of transactions) {
-    if (!countsAsSpending(t)) continue;
+    if (!countsAsSpending(t, cc)) continue;
     totals[t.who] = (totals[t.who] ?? 0) + t.amount;
   }
   return (Object.keys(totals) as WhoId[])
@@ -144,11 +165,15 @@ export interface DayPoint {
 }
 
 /** Expense spending per day for the last `days` days (oldest -> newest). */
-export function dailySpend(transactions: Transaction[], days = 7): DayPoint[] {
+export function dailySpend(
+  transactions: Transaction[],
+  days = 7,
+  cc?: CreditCardConfig
+): DayPoint[] {
   const points: DayPoint[] = [];
   const byDate = new Map<string, number>();
   for (const t of transactions) {
-    if (!countsAsSpending(t)) continue;
+    if (!countsAsSpending(t, cc)) continue;
     byDate.set(t.date, (byDate.get(t.date) ?? 0) + t.amount);
   }
   for (let i = days - 1; i >= 0; i--) {

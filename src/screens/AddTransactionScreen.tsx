@@ -105,19 +105,22 @@ export default function AddTransactionScreen() {
       sourcesForPerson(DEVICE_PERSON).filter((s) => s.id !== defaultSource)[0]?.id ??
       defaultSource
   );
-  const [amountOut, setAmountOut] = useState(
-    editingTransfer ? formatAmountInput(String(Math.round(editingTransfer.amountOut))) : ''
+  // Transfer amount = the "money moved" that shows up on both accounts.
+  // Fee is an optional extra that stays with the source account. When
+  // editing, we seed the transfer amount from either leg (they're equal)
+  // and the fee from the biaya_pajak leg amount (0 if there wasn't one).
+  const [transferAmount, setTransferAmount] = useState(
+    editingTransfer
+      ? formatAmountInput(String(Math.round(Math.min(editingTransfer.amountOut, editingTransfer.amountIn))))
+      : ''
   );
-  const [amountIn, setAmountIn] = useState(
-    editingTransfer ? formatAmountInput(String(Math.round(editingTransfer.amountIn))) : ''
+  const [transferFeeInput, setTransferFeeInput] = useState(
+    editingTransfer && editingTransfer.amountOut > editingTransfer.amountIn
+      ? formatAmountInput(String(Math.round(editingTransfer.amountOut - editingTransfer.amountIn)))
+      : ''
   );
-  const amountOutValue = parseAmountInput(amountOut);
-  const amountInValue = parseAmountInput(amountIn);
-  // Positive = fee (sent more than received). Negative = discount (received
-  // more than sent — e.g. a promo top-up). Zero = clean transfer.
-  const transferDelta = amountOutValue - amountInValue;
-  const transferFee = Math.max(0, transferDelta);
-  const transferDiscount = Math.max(0, -transferDelta);
+  const transferAmountValue = parseAmountInput(transferAmount);
+  const transferFee = parseAmountInput(transferFeeInput);
   const transferToList = useMemo(
     () => sourcesForPerson(toSourcesPerson).filter((s) => s.id !== fromSource),
     [toSourcesPerson, fromSource]
@@ -246,7 +249,7 @@ export default function AddTransactionScreen() {
     [items]
   );
   const canSave = isTransfer
-    ? fromSource !== toSource && amountOutValue > 0 && amountInValue > 0
+    ? fromSource !== toSource && transferAmountValue > 0 && transferFee >= 0
     : merchant.trim().length > 0 &&
       (itemized ? validItemCount > 0 && itemsSum > 0 : amountValue > 0);
 
@@ -273,17 +276,16 @@ export default function AddTransactionScreen() {
           .filter((t) => t.transferGroup === editingTransfer.group)
           .forEach((t) => deleteTransaction(t.id));
       }
-      const tg = editingTransfer ? uid() : uid();
+      const tg = uid();
       const fromLabel = sourceOf(fromSource).label;
       const toLabel = sourceOf(toSource).label;
-      // Three rows linked by transferGroup: transferred amount (equal on
-      // both legs, = the smaller of amountOut/amountIn — the "money that
-      // actually moved"), plus a third row for the FEE (out > in, real
-      // spending on the source account) or DISCOUNT (in > out, real income
-      // on the destination account).
-      const moved = Math.min(amountOutValue, amountInValue);
-      const fee = Math.max(0, amountOutValue - amountInValue); // out extra > in received
-      const discount = Math.max(0, amountInValue - amountOutValue); // in extra > out sent
+      // Two moved-legs + optional fee. Both moved legs carry the same
+      // "amount that actually crossed", so the aggregation UI can show
+      // them both as +transferAmount (green). The fee, when non-zero, is
+      // a real expense on the source account — it hits the daily subtotal
+      // and reduces the source balance.
+      const moved = transferAmountValue;
+      const fee = transferFee;
       addTransaction({
         type: 'expense',
         date,
@@ -306,8 +308,6 @@ export default function AddTransactionScreen() {
         transferGroup: tg,
       });
       if (fee > 0) {
-        // Real spending against the source account — counts in daily
-        // subtotals and reduces the source balance.
         addTransaction({
           type: 'expense',
           date,
@@ -316,20 +316,6 @@ export default function AddTransactionScreen() {
           category: 'biaya_pajak',
           who: 'rumah',
           source: fromSource,
-          transferGroup: tg,
-        });
-      } else if (discount > 0) {
-        // Received more than sent — extra shows up as income on the
-        // recipient account.
-        addTransaction({
-          type: 'income',
-          date,
-          merchant: `Diskon Transfer ${fromLabel} → ${toLabel}`,
-          amount: discount,
-          category: 'diskon',
-          incomeCategory: 'lainnya_in',
-          who: 'rumah',
-          source: toSource,
           transferGroup: tg,
         });
       }
@@ -484,17 +470,12 @@ export default function AddTransactionScreen() {
               })}
             </View>
 
-            <Text style={styles.label}>Jumlah keluar</Text>
+            <Text style={styles.label}>Jumlah Transfer</Text>
             <View style={styles.amountRow}>
               <Text style={styles.currency}>Rp</Text>
               <TextInput
-                value={amountOut}
-                onChangeText={(t) => {
-                  const f = formatAmountInput(t);
-                  setAmountOut(f);
-                  // Default: in == out unless user already overrode it.
-                  if (!amountIn || amountIn === amountOut) setAmountIn(f);
-                }}
+                value={transferAmount}
+                onChangeText={(t) => setTransferAmount(formatAmountInput(t))}
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
@@ -502,12 +483,12 @@ export default function AddTransactionScreen() {
               />
             </View>
 
-            <Text style={styles.label}>Jumlah masuk</Text>
+            <Text style={styles.label}>Biaya / Pajak Transaksi (opsional)</Text>
             <View style={styles.amountRow}>
               <Text style={styles.currency}>Rp</Text>
               <TextInput
-                value={amountIn}
-                onChangeText={(t) => setAmountIn(formatAmountInput(t))}
+                value={transferFeeInput}
+                onChangeText={(t) => setTransferFeeInput(formatAmountInput(t))}
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={colors.textMuted}
@@ -516,11 +497,7 @@ export default function AddTransactionScreen() {
             </View>
             {transferFee > 0 ? (
               <Text style={[styles.autoHint, { color: colors.danger }]}>
-                + {money(transferFee)} dicatat sebagai Biaya / Pajak Transaksi
-              </Text>
-            ) : transferDiscount > 0 ? (
-              <Text style={[styles.autoHint, { color: colors.success }]}>
-                − {money(transferDiscount)} dicatat sebagai Diskon
+                Biaya {money(transferFee)} mengurangi saldo {sourceOf(fromSource).label}.
               </Text>
             ) : null}
 

@@ -54,7 +54,7 @@ export default function DashboardScreen() {
 
   const mKey = currentMonthKey();
   const monthTx = useMemo(() => txForMonth(transactions, mKey), [transactions, mKey]);
-  const byCatAll = useMemo(() => spendByCategory(monthTx, budgets), [monthTx, budgets]);
+  const byCatAll = useMemo(() => spendByCategory(monthTx, budgets, creditCard), [monthTx, budgets]);
   // Anggaran totals/warnings only count pickable categories the user hasn't
   // switched off — system-internal categories and disabled ones are excluded.
   const byCat = useMemo(
@@ -66,7 +66,7 @@ export default function DashboardScreen() {
   );
   const spent = byCat.reduce((s, c) => s + c.spent, 0);
   const totalBudget = byCat.reduce((s, c) => s + c.budget, 0);
-  const byWho = useMemo(() => spendByWho(monthTx), [monthTx]);
+  const byWho = useMemo(() => spendByWho(monthTx, creditCard), [monthTx, creditCard]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
   const remaining = totalBudget - spent;
