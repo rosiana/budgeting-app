@@ -38,6 +38,23 @@ import {
   whoOf,
 } from '../theme';
 import { CategoryId, LineItem, SourceId, Transaction, WhoId } from '../types';
+
+/** Display-only extensions to LineItem so a synthesized item can override the
+ *  who-chip label + color (e.g., render the ACCOUNT name on a Transfer leg
+ *  instead of a WhoId). Not persisted. */
+type DisplayItem = LineItem & { chipLabel?: string; chipColor?: string };
+/** Display-only extensions to Transaction: an aggregated transfer / balance-
+ *  adjustment carries a `componentIds` array so deleting the row deletes all
+ *  its underlying rows, and a `transferSummary` so we can render the special
+ *  "from → to" pill on the shell. */
+type DisplayTx = Omit<Transaction, 'items'> & {
+  items?: DisplayItem[];
+  transferSummary?: { fromLabel: string; toLabel: string; fromColor: string; toColor: string };
+  componentIds?: string[];
+  /** Suppress the auto Biaya/Diskon remainder row — set on synthesized rows
+   *  where the fee/discount is already an explicit item. */
+  suppressRemainder?: boolean;
+};
 import {
   currentMonthKey,
   formatCurrency,
@@ -74,18 +91,180 @@ export default function TransactionsScreen() {
     [transactions, month]
   );
 
+  // Collapse related rows into single accordions:
+  //  - Transfers: the two legs (expense + income) sharing a transferGroup are
+  //    merged into ONE row with items = [Ke <to>, Dari <from>, +/− Biaya/Diskon].
+  //  - Penyesuaian Saldo: every manual balance adjustment on the same date
+  //    becomes one row grouped by date, with each leg as an item.
+  //  - Investasi: Rugi Investasi + Untung Investasi on the same date are
+  //    aggregated into one "Penyesuaian Investasi" accordion.
+  const collapsed: DisplayTx[] = useMemo(() => {
+    const out: DisplayTx[] = [];
+    const seenTransfer = new Set<string>();
+    const penyesuaianByDate = new Map<string, Transaction[]>();
+    const investasiByDate = new Map<string, Transaction[]>();
+
+    const isPenyesuaian = (t: Transaction) =>
+      t.category === 'penyesuaian_saldo' || t.incomeCategory === 'penyesuaian_saldo_in';
+    const isInvestasi = (t: Transaction) =>
+      t.category === 'rugi_investasi' || t.incomeCategory === 'investasi';
+
+    for (const t of monthTx) {
+      if (t.transferGroup) {
+        if (seenTransfer.has(t.transferGroup)) continue;
+        seenTransfer.add(t.transferGroup);
+        const legs = monthTx.filter((x) => x.transferGroup === t.transferGroup);
+        const expLeg = legs.find((x) => x.type !== 'income');
+        const incLeg = legs.find((x) => x.type === 'income');
+        if (!expLeg || !incLeg) {
+          out.push(t); // malformed — leave alone
+          continue;
+        }
+        const fromSrc = sourceOf(expLeg.source);
+        const toSrc = sourceOf(incLeg.source);
+        const outAmt = expLeg.amount;
+        const inAmt = incLeg.amount;
+        const items: DisplayItem[] = [
+          {
+            description: `Ke ${toSrc.label}`,
+            amount: outAmt,
+            category: 'transfer_out',
+            who: 'rumah',
+            chipLabel: fromSrc.label,
+            chipColor: fromSrc.color,
+          },
+          {
+            description: `Dari ${fromSrc.label}`,
+            amount: inAmt,
+            category: 'lainnya',
+            who: 'rumah',
+            chipLabel: toSrc.label,
+            chipColor: toSrc.color,
+          },
+        ];
+        const delta = outAmt - inAmt;
+        if (Math.abs(delta) >= 1) {
+          items.push({
+            description: delta > 0 ? 'Biaya / Pajak Transaksi' : 'Diskon',
+            amount: Math.abs(delta),
+            category: delta > 0 ? 'biaya_pajak' : 'diskon',
+            who: 'rumah',
+            // No chipLabel → renders "otomatis" text (same as the multi-item
+            // remainder row, matching what the user asked for).
+          });
+        }
+        out.push({
+          ...expLeg,
+          merchant: `Transfer ${fromSrc.label} → ${toSrc.label}`,
+          amount: outAmt,
+          items,
+          transferSummary: {
+            fromLabel: fromSrc.label,
+            toLabel: toSrc.label,
+            fromColor: fromSrc.color,
+            toColor: toSrc.color,
+          },
+          componentIds: legs.map((l) => l.id),
+          suppressRemainder: true,
+        });
+        continue;
+      }
+      if (isPenyesuaian(t)) {
+        const key = t.date;
+        if (!penyesuaianByDate.has(key)) penyesuaianByDate.set(key, []);
+        penyesuaianByDate.get(key)!.push(t);
+        continue;
+      }
+      if (isInvestasi(t)) {
+        const key = t.date;
+        if (!investasiByDate.has(key)) investasiByDate.set(key, []);
+        investasiByDate.get(key)!.push(t);
+        continue;
+      }
+      out.push(t);
+    }
+
+    const emitDayGroup = (
+      key: string,
+      legs: Transaction[],
+      merchant: string,
+      parentCategory: CategoryId
+    ) => {
+      if (legs.length === 1) {
+        // Only one adjustment that day — no need to synthesize a group.
+        out.push(legs[0]);
+        return;
+      }
+      // Signed net: income adds, expense subtracts. The parent shell uses the
+      // magnitude of that net for the amount so the shell reads sensibly at a
+      // glance; per-leg items keep their real amounts.
+      const net = legs.reduce(
+        (s, l) => s + (l.type === 'income' ? l.amount : -l.amount),
+        0
+      );
+      const items: DisplayItem[] = legs
+        .map((l) => {
+          const s = sourceOf(l.source);
+          const w = whoOf(l.who);
+          const signed = l.type === 'income' ? l.amount : -l.amount;
+          return {
+            description: `${signed >= 0 ? '+' : '−'} ${s.label}`,
+            amount: Math.abs(signed),
+            category: l.category,
+            who: w.id,
+            chipLabel: s.label,
+            chipColor: s.color,
+          } as DisplayItem;
+        });
+      // Represent as an expense-typed row (so the shell renders neutrally) but
+      // display the signed amount in the merchant amount slot.
+      out.push({
+        id: `grp:${parentCategory}:${key}`,
+        type: 'expense',
+        date: key,
+        merchant,
+        // Amount here is the sum of item amounts — TxRow reads shell amount
+        // from items when suppressRemainder is on. We stash the signed net
+        // on `note` so the amount label can show sign properly (below).
+        amount: legs.reduce((s, l) => s + l.amount, 0),
+        category: parentCategory,
+        who: 'rumah',
+        source: legs[0].source,
+        createdAt: Math.max(...legs.map((l) => l.createdAt || 0)),
+        updatedAt: Math.max(...legs.map((l) => l.updatedAt || l.createdAt || 0)),
+        items,
+        componentIds: legs.map((l) => l.id),
+        suppressRemainder: true,
+        // Piggy-back the signed net so TxRow can display "+X" / "−X".
+        note: `__net__:${net}`,
+      });
+    };
+
+    for (const [key, legs] of penyesuaianByDate) {
+      emitDayGroup(key, legs, 'Penyesuaian Saldo', 'penyesuaian_saldo');
+    }
+    for (const [key, legs] of investasiByDate) {
+      emitDayGroup(key, legs, 'Penyesuaian Investasi', 'rugi_investasi');
+    }
+    return out;
+  }, [monthTx]);
+
   // The active expense category (for showing per-item portions), if any.
   const activeCat: CategoryId | null =
     mode !== 'pemasukan' && catFilter !== 'all' ? (catFilter as CategoryId) : null;
+  // When the user typed a name query, we also narrow multi-item accordions to
+  // the matching items (same UX as the category filter — "dari total X").
+  const activeNameQuery = nameQuery.trim().toLowerCase();
 
-  const filtered = useMemo(() => {
-    // 1) Mode + category/income tab filter (existing).
-    let list: Transaction[];
+  const filtered: DisplayTx[] = useMemo(() => {
+    // 1) Mode + category/income tab filter — runs on the collapsed list so
+    //    Transfer / Penyesuaian aggregated rows survive the pass.
+    let list: DisplayTx[];
     if (mode === 'pemasukan') {
-      const inc = monthTx.filter((t) => t.type === 'income');
+      const inc = collapsed.filter((t) => t.type === 'income');
       list = incFilter === 'all' ? inc : inc.filter((t) => t.incomeCategory === incFilter);
     } else {
-      const base = mode === 'pengeluaran' ? monthTx.filter((t) => t.type !== 'income') : monthTx;
+      const base = mode === 'pengeluaran' ? collapsed.filter((t) => t.type !== 'income') : collapsed;
       list = catFilter === 'all'
         ? base
         : base.filter(
@@ -99,8 +278,6 @@ export default function TransactionsScreen() {
     if (q) {
       list = list.filter((t) => {
         if ((t.merchant || '').toLowerCase().includes(q)) return true;
-        // Also match individual item descriptions inside a multi-item tx so
-        // "somethinc" finds it even when it's a line in a bigger receipt.
         return t.items?.some((it) => (it.description || '').toLowerCase().includes(q)) ?? false;
       });
     }
@@ -111,50 +288,99 @@ export default function TransactionsScreen() {
           (t.items?.some((it) => it.who === whoFilter) ?? false)
       );
     }
-    if (sourceFilter !== 'all') list = list.filter((t) => t.source === sourceFilter);
+    if (sourceFilter !== 'all') {
+      // Aggregated transfers only carry the from-account as `source`; also
+      // match the recipient account so filtering by SeaBank shows a "BCA →
+      // SeaBank" transfer too.
+      list = list.filter((t) => {
+        if (t.source === sourceFilter) return true;
+        if (t.transferSummary) {
+          const legs = monthTx.filter((x) => x.transferGroup === t.transferGroup);
+          if (legs.some((l) => l.source === sourceFilter)) return true;
+        }
+        return false;
+      });
+    }
     return list;
-  }, [monthTx, mode, catFilter, incFilter, nameQuery, whoFilter, sourceFilter]);
+  }, [collapsed, monthTx, mode, catFilter, incFilter, nameQuery, whoFilter, sourceFilter]);
 
-  // Amount to show for a row — when filtered by a category, an itemized
-  // transaction shows just that category's portion.
-  const rowAmount = (t: Transaction): number => {
-    if (activeCat && t.type !== 'income' && t.items && t.items.length) {
-      const portion = t.items
-        .filter((it) => it.category === activeCat)
-        .reduce((s, it) => s + it.amount, 0);
+  // Amount to show for a row — when either a category or a name query is
+  // active, an itemized transaction shows just the sum of items that match.
+  // If both are active, items must match both.
+  const itemMatches = (it: DisplayItem): boolean => {
+    if (activeCat && it.category !== activeCat) return false;
+    if (activeNameQuery && !(it.description || '').toLowerCase().includes(activeNameQuery)) return false;
+    return true;
+  };
+  const hasItemFilter = !!activeCat || !!activeNameQuery;
+  const parentNameMatches = (t: DisplayTx): boolean =>
+    !activeNameQuery || (t.merchant || '').toLowerCase().includes(activeNameQuery);
+
+  const rowAmount = (t: DisplayTx): number => {
+    if (hasItemFilter && t.type !== 'income' && t.items && t.items.length) {
+      if (activeNameQuery && parentNameMatches(t) && !activeCat) return t.amount;
+      const portion = t.items.filter(itemMatches).reduce((s, it) => s + it.amount, 0);
       return portion || t.amount;
     }
     return t.amount;
   };
-  const matchingItems = (t: Transaction): LineItem[] =>
-    activeCat && t.items ? t.items.filter((it) => it.category === activeCat) : [];
+  const matchingItems = (t: DisplayTx): DisplayItem[] => {
+    if (!hasItemFilter || !t.items) return [];
+    if (activeNameQuery && parentNameMatches(t) && !activeCat) return [];
+    return t.items.filter(itemMatches);
+  };
 
   const sections = useMemo(
     () =>
       groupByDate(filtered).map((g) => ({
         title: formatDateFriendly(g.date),
         // Net for the day: income adds, expense subtracts (using shown amount).
-        subtotal: g.items.reduce(
-          (s, t) => s + (t.type === 'income' ? t.amount : -rowAmount(t)),
-          0
-        ),
+        // Aggregated transfer/daily-group rows contribute nothing — they don't
+        // represent net spending, just money moving or being reconciled.
+        subtotal: g.items.reduce((s, t) => {
+          const dt = t as DisplayTx;
+          if (dt.transferSummary || dt.componentIds) return s;
+          return s + (t.type === 'income' ? t.amount : -rowAmount(dt));
+        }, 0),
         // Newest first within the day (by createdAt; updatedAt as tiebreaker).
         data: [...g.items].sort(
           (a, b) =>
             (b.createdAt ?? b.updatedAt ?? 0) - (a.createdAt ?? a.updatedAt ?? 0)
         ),
       })),
-    [filtered, activeCat]
+    [filtered, activeCat, activeNameQuery]
   );
 
-  const confirmDelete = (tx: Transaction) => {
+  const confirmDelete = (tx: DisplayTx) => {
     Alert.alert('Hapus transaksi', `Hapus "${tx.merchant}"?`, [
       { text: 'Batal', style: 'cancel' },
-      { text: 'Hapus', style: 'destructive', onPress: () => deleteTransaction(tx.id) },
+      {
+        text: 'Hapus',
+        style: 'destructive',
+        onPress: () => {
+          // Aggregated rows (Transfer, Penyesuaian Saldo/Investasi grouping)
+          // carry the underlying ids so we clean up every leg in one tap.
+          const ids = tx.componentIds && tx.componentIds.length ? tx.componentIds : [tx.id];
+          ids.forEach((id) => deleteTransaction(id));
+        },
+      },
     ]);
   };
 
-  const openEdit = (tx: Transaction) => {
+  const openEdit = (tx: DisplayTx) => {
+    // Synthesized rows (Transfer group, daily Penyesuaian) aren't a single
+    // saved transaction, so there's nothing sensible to edit. Explain and
+    // offer to delete instead.
+    if (tx.componentIds && tx.componentIds.length > 1) {
+      Alert.alert(
+        tx.transferSummary ? 'Transfer tidak bisa diubah' : 'Grup harian tidak bisa diubah',
+        tx.transferSummary
+          ? 'Hapus lalu tambah ulang jika ingin mengubah nominal atau akun.'
+          : 'Hapus lalu tambah ulang penyesuaian jika perlu diubah.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     navigation.navigate('AddTransaction', {
       draft: {
         id: tx.id,
@@ -292,7 +518,7 @@ export default function TransactionsScreen() {
           <TxRow
             tx={item}
             money={money}
-            activeCat={activeCat}
+            hasItemFilter={hasItemFilter}
             rowAmount={rowAmount}
             matchingItems={matchingItems}
             expanded={!!expanded[item.id]}
@@ -522,7 +748,7 @@ function FsChip({
 function TxRow({
   tx,
   money,
-  activeCat,
+  hasItemFilter,
   rowAmount,
   matchingItems,
   expanded,
@@ -530,74 +756,124 @@ function TxRow({
   onEdit,
   onDelete,
 }: {
-  tx: Transaction;
+  tx: DisplayTx;
   money: (n: number) => string;
-  activeCat: CategoryId | null;
-  rowAmount: (t: Transaction) => number;
-  matchingItems: (t: Transaction) => LineItem[];
+  hasItemFilter: boolean;
+  rowAmount: (t: DisplayTx) => number;
+  matchingItems: (t: DisplayTx) => DisplayItem[];
   expanded: boolean;
   onToggleExpand: () => void;
-  onEdit: (tx: Transaction) => void;
-  onDelete: (tx: Transaction) => void;
+  onEdit: (tx: DisplayTx) => void;
+  onDelete: (tx: DisplayTx) => void;
 }) {
-  const vis = txVisual(tx);
   const person = whoOf(tx.who);
   const src = sourceOf(tx.source);
   const income = tx.type === 'income';
   const isItemized = !!(tx.items && tx.items.length);
   const shown = rowAmount(tx);
-  const itemsForCat = matchingItems(tx);
-  const itemsList = activeCat && itemsForCat.length ? itemsForCat : tx.items ?? [];
+  const filteredItems = matchingItems(tx);
+  const itemsList = filteredItems.length ? filteredItems : tx.items ?? [];
 
-  // Synthetic Diskon / Biaya / Pajak Transaksi row derived from the parent's
-  // total - itemsSum. Shown only in the unfiltered (no activeCat) expanded view
-  // so the totals add up visually.
+  // Synthetic Diskon / Biaya / Pajak Transaksi row derived from parent - items.
+  // Suppressed for synthesized rows (transfer / daily group) where the fee /
+  // discount is already an explicit item, and when an item-level filter is
+  // active (filtered subset no longer sums to the parent amount).
   const itemsSum = (tx.items ?? []).reduce((s, it) => s + it.amount, 0);
   const remainder = tx.amount - itemsSum;
-  const showRemainderRow = !activeCat && isItemized && Math.abs(remainder) >= 1;
+  const showRemainderRow =
+    !hasItemFilter &&
+    isItemized &&
+    !tx.suppressRemainder &&
+    Math.abs(remainder) >= 1;
   const remainderCat = remainder > 0 ? categoryOf('biaya_pajak') : categoryOf('diskon');
   const remainderLabel = remainder > 0 ? 'Biaya / Pajak Transaksi' : 'Diskon';
 
+  // For synthesized daily groups the amount to display is a SIGNED net
+  // stashed on `note` as "__net__:<n>"; falls back to `shown` otherwise.
+  const groupNet = tx.note?.startsWith('__net__:')
+    ? Number(tx.note.slice('__net__:'.length))
+    : null;
+
   return (
     <View style={styles.row}>
-      {/* Tap the body to edit (single OR itemized). Long-press deletes. The
-       *  chevron pill on the right is the only thing that toggles expand, so
-       *  the parent shell stays fully editable. */}
+      {/* Tap the body to edit (single OR itemized). Long-press deletes. */}
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={() => onEdit(tx)}
         onLongPress={() => onDelete(tx)}
         style={styles.rowTouch}
       >
-        {/* Itemized parents use a distinct "basket" icon to signal multi-item;
-         *  single-tx rows use the category icon. */}
+        {/* Itemized parents: the +/− toggle occupies the icon slot on the
+         *  left. Sits where the category icon would, so the merchant + meta
+         *  columns stay aligned with single-tx rows next to them.
+         *  Single-tx rows still show the category icon. */}
         {isItemized ? (
-          <IconCircle icon="basket" iconSet="ion" color={vis.color} />
+          <TouchableOpacity
+            onPress={onToggleExpand}
+            hitSlop={12}
+            style={styles.toggleCircle}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={expanded ? 'remove' : 'add'}
+              size={22}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
         ) : (
-          <IconCircle icon={vis.icon} iconSet={vis.iconSet} color={vis.color} />
+          (() => {
+            const vis = txVisual(tx);
+            return <IconCircle icon={vis.icon} iconSet={vis.iconSet} color={vis.color} />;
+          })()
         )}
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <View style={styles.rowTopRow}>
             <Text style={styles.merchant} numberOfLines={1}>
               {tx.merchant}
             </Text>
-            <Text style={[styles.amount, income && { color: colors.success }]}>
-              {income ? '+' : ''}
-              {money(shown)}
+            <Text
+              style={[
+                styles.amount,
+                income && { color: colors.success },
+                groupNet != null && (groupNet >= 0 ? { color: colors.success } : { color: colors.danger }),
+              ]}
+            >
+              {groupNet != null
+                ? `${groupNet >= 0 ? '+' : '−'}${money(Math.abs(groupNet))}`
+                : `${income ? '+' : ''}${money(shown)}`}
             </Text>
           </View>
           <View style={styles.rowBottom}>
-            {/* Shell of a multi-item tx has no "Untuk Siapa" — each item
-             *  carries its own. Single tx still shows the parent's who. */}
-            {!isItemized ? (
+            {/* Shell "Untuk Siapa":
+             *   - Transfer aggregation: a two-tone [from → to] chip so the
+             *     user sees the direction at a glance.
+             *   - Single-tx row: standard person chip.
+             *   - Regular multi-item / daily-group shell: no chip (items carry
+             *     their own or account labels). */}
+            {tx.transferSummary ? (
+              <View style={styles.transferPair}>
+                <View style={[styles.whoTag, { backgroundColor: tx.transferSummary.fromColor + '22' }]}>
+                  <Text style={[styles.whoTagText, { color: tx.transferSummary.fromColor }]}>{tx.transferSummary.fromLabel}</Text>
+                </View>
+                <Ionicons name="arrow-forward" size={12} color={colors.textMuted} />
+                <View style={[styles.whoTag, { backgroundColor: tx.transferSummary.toColor + '22' }]}>
+                  <Text style={[styles.whoTagText, { color: tx.transferSummary.toColor }]}>{tx.transferSummary.toLabel}</Text>
+                </View>
+              </View>
+            ) : !isItemized ? (
               <View style={[styles.whoTag, { backgroundColor: person.color + '22' }]}>
                 <Text style={[styles.whoTagText, { color: person.color }]}>{person.label}</Text>
               </View>
             ) : null}
-            <Text style={styles.meta}>
-              {!isItemized ? '· ' : ''}
-              {src.label}
-            </Text>
+            {/* Sumber Dana is meaningless on a transfer aggregate (each leg
+             *  has its own) and on a daily group (each item shows its
+             *  account), so hide it there. */}
+            {!tx.transferSummary && !tx.componentIds ? (
+              <Text style={styles.meta}>
+                {!isItemized ? '· ' : ''}
+                {src.label}
+              </Text>
+            ) : null}
             {tx.creditCard ? (
               <View style={styles.ccBadge}>
                 <Ionicons name="card" size={10} color={colors.primary} />
@@ -619,22 +895,6 @@ function TxRow({
             {tx.image ? <Ionicons name="image" size={12} color={colors.textMuted} /> : null}
           </View>
         </View>
-        {/* Dedicated toggle target — expands/collapses without triggering
-         *  edit. + when collapsed, − when expanded to signal "reveal / hide
-         *  the child items" better than a chevron. */}
-        {isItemized ? (
-          <TouchableOpacity
-            onPress={onToggleExpand}
-            hitSlop={12}
-            style={styles.chevBtn}
-          >
-            <Ionicons
-              name={expanded ? 'remove' : 'add'}
-              size={22}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
-        ) : null}
       </TouchableOpacity>
 
       {/* Expanded item list — only for itemized parents. Items render in the
@@ -645,6 +905,14 @@ function TxRow({
           {itemsList.map((it, i) => {
             const cat = categoryOf(it.category);
             const w = whoOf(it.who ?? tx.who);
+            // A synthesized transfer / daily-group item overrides the who-
+            // chip with the account name (chipLabel / chipColor). For
+            // regular multi-item transactions we keep the standard who chip.
+            const chipLabel = it.chipLabel ?? w.label;
+            const chipColor = it.chipColor ?? w.color;
+            // On synthesized rows (transfer aggregate / daily group), an item
+            // without a chipLabel is the auto-derived Biaya/Diskon leg.
+            const isAutoItem = !!tx.componentIds && !it.chipLabel;
             return (
               <View key={i} style={styles.itemRowSingle}>
                 <IconCircle icon={cat.icon} iconSet={cat.iconSet} color={cat.color} />
@@ -656,10 +924,16 @@ function TxRow({
                     <Text style={styles.amount}>{money(it.amount)}</Text>
                   </View>
                   <View style={styles.rowBottom}>
-                    <View style={[styles.whoTag, { backgroundColor: w.color + '22' }]}>
-                      <Text style={[styles.whoTagText, { color: w.color }]}>{w.label}</Text>
-                    </View>
-                    <Text style={styles.meta}>· {cat.label}</Text>
+                    {isAutoItem ? (
+                      <Text style={styles.meta}>otomatis</Text>
+                    ) : (
+                      <>
+                        <View style={[styles.whoTag, { backgroundColor: chipColor + '22' }]}>
+                          <Text style={[styles.whoTagText, { color: chipColor }]}>{chipLabel}</Text>
+                        </View>
+                        <Text style={styles.meta}>· {cat.label}</Text>
+                      </>
+                    )}
                   </View>
                 </View>
               </View>
@@ -687,7 +961,7 @@ function TxRow({
               </View>
             </View>
           ) : null}
-          {activeCat && itemsForCat.length ? (
+          {hasItemFilter && filteredItems.length ? (
             <Text style={styles.itemListTotal}>
               dari total {money(tx.amount)}
             </Text>
@@ -844,13 +1118,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   rowTouch: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
-  chevBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  // 40pt to match IconCircle's default so multi-item and single-tx rows share
+  // the same left column width and their merchant text lines up.
+  toggleCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
+    backgroundColor: colors.primary + '18',
   },
   rowTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -881,6 +1157,7 @@ const styles = StyleSheet.create({
   amount: { fontSize: 15, fontWeight: '800', color: colors.text },
   rowBottom: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
   whoTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
+  transferPair: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   whoTagText: { fontSize: 11, fontWeight: '700' },
   meta: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   ccBadge: {

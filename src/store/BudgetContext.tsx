@@ -268,7 +268,31 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
           creditCard: stateRef.current.creditCard,
           settingsUpdatedAt: stateRef.current.settingsUpdatedAt,
         };
-        const merged = await syncWithSheet(cfg, snapshot);
+        const serverMerged = await syncWithSheet(cfg, snapshot);
+        // Defense in depth: preserve any LOCAL tombstones the server response
+        // is missing (or has as un-deleted with an older updatedAt). This
+        // rescues deletes when a race let a stale un-deleted row round-trip
+        // — the local delete should always win over an older non-tombstone.
+        const localById = new Map(
+          stateRef.current.transactions.map((t) => [t.id, t] as const)
+        );
+        const mergedById = new Map(
+          serverMerged.transactions.map((t) => [t.id, t] as const)
+        );
+        for (const local of stateRef.current.transactions) {
+          if (!local.deleted) continue;
+          const remote = mergedById.get(local.id);
+          const localTs = local.updatedAt ?? local.createdAt ?? 0;
+          const remoteTs = remote?.updatedAt ?? remote?.createdAt ?? 0;
+          if (!remote || remoteTs <= localTs) mergedById.set(local.id, local);
+        }
+        const mergedTransactions = Array.from(mergedById.values());
+        // Sanity: also keep any purely-local rows the server hasn't seen yet
+        // (e.g., an add that hit the network right as the response returned).
+        for (const [id, t] of localById) {
+          if (!mergedById.has(id)) mergedTransactions.push(t);
+        }
+        const merged = { ...serverMerged, transactions: mergedTransactions };
         dispatch({ type: 'replaceData', data: merged });
         // Mark this data as "in sync" so the auto-sync effect doesn't re-fire
         // off the dispatch we just did.
@@ -395,7 +419,15 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         return tx;
       },
       updateTransaction: (tx) => dispatch({ type: 'updateTransaction', tx }),
-      deleteTransaction: (id) => dispatch({ type: 'deleteTransaction', id }),
+      deleteTransaction: (id) => {
+        dispatch({ type: 'deleteTransaction', id });
+        // Push the tombstone to the sheet as soon as React has committed the
+        // new state to stateRef. A 300ms delay is enough for the next render
+        // tick, and much better than the 2.5s auto-sync debounce for making
+        // deletes stick even if the user backgrounds/kills the app shortly
+        // after tapping Hapus.
+        setTimeout(() => runSync(syncConfig), 300);
+      },
       setBudget: (category, amount) => dispatch({ type: 'setBudget', category, amount }),
       toggleBudget: (category) => dispatch({ type: 'toggleBudget', category }),
       setOpeningBalance: (source, amount) =>

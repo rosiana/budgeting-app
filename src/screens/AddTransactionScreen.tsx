@@ -101,7 +101,11 @@ export default function AddTransactionScreen() {
   const [amountIn, setAmountIn] = useState('');
   const amountOutValue = parseAmountInput(amountOut);
   const amountInValue = parseAmountInput(amountIn);
-  const transferFee = Math.max(0, amountOutValue - amountInValue);
+  // Positive = fee (sent more than received). Negative = discount (received
+  // more than sent — e.g. a promo top-up). Zero = clean transfer.
+  const transferDelta = amountOutValue - amountInValue;
+  const transferFee = Math.max(0, transferDelta);
+  const transferDiscount = Math.max(0, -transferDelta);
   const transferToList = useMemo(
     () => sourcesForPerson(toSourcesPerson).filter((s) => s.id !== fromSource),
     [toSourcesPerson, fromSource]
@@ -196,7 +200,7 @@ export default function AddTransactionScreen() {
     [items]
   );
   const canSave = isTransfer
-    ? fromSource !== toSource && amountOutValue > 0 && amountInValue > 0 && amountInValue <= amountOutValue
+    ? fromSource !== toSource && amountOutValue > 0 && amountInValue > 0
     : merchant.trim().length > 0 &&
       (itemized ? validItemCount > 0 && itemsSum > 0 : amountValue > 0);
 
@@ -219,48 +223,21 @@ export default function AddTransactionScreen() {
       const tg = uid();
       const fromLabel = sourceOf(fromSource).label;
       const toLabel = sourceOf(toSource).label;
-      // Outgoing side. If there's a fee, store it as a multi-item transaction
-      // so the row renders as an accordion: main "Transfer" leg + a Biaya /
-      // Pajak Transaksi item. When fee = 0 we skip items entirely so it stays
-      // a single-row transaction (no redundant single-item accordion).
-      addTransaction(
-        transferFee > 0
-          ? {
-              type: 'expense',
-              date,
-              merchant: `Transfer ke ${toLabel}`,
-              amount: amountOutValue,
-              category: 'transfer_out',
-              who: 'rumah',
-              source: fromSource,
-              transferGroup: tg,
-              items: [
-                {
-                  description: `Transfer ke ${toLabel}`,
-                  amount: amountInValue,
-                  category: 'transfer_out',
-                  who: 'rumah',
-                },
-                {
-                  description: 'Biaya / Pajak Transaksi',
-                  amount: transferFee,
-                  category: 'biaya_pajak',
-                  who: 'rumah',
-                },
-              ],
-            }
-          : {
-              type: 'expense',
-              date,
-              merchant: `Transfer ke ${toLabel}`,
-              amount: amountInValue,
-              category: 'transfer_out',
-              who: 'rumah',
-              source: fromSource,
-              transferGroup: tg,
-            }
-      );
-      // Money into the destination account (ignored from income totals).
+      // Two clean rows linked by transferGroup. The Transaksi screen
+      // aggregates them back into ONE accordion visually. Each row keeps its
+      // real amount so the from-account is debited by amountOut and the
+      // to-account is credited by amountIn — the fee / discount emerges
+      // naturally from the difference between the two amounts.
+      addTransaction({
+        type: 'expense',
+        date,
+        merchant: `Transfer ke ${toLabel}`,
+        amount: amountOutValue,
+        category: 'transfer_out',
+        who: 'rumah',
+        source: fromSource,
+        transferGroup: tg,
+      });
       addTransaction({
         type: 'income',
         date,
@@ -454,8 +431,12 @@ export default function AddTransactionScreen() {
               />
             </View>
             {transferFee > 0 ? (
-              <Text style={styles.autoHint}>
-                Selisih {money(transferFee)} dicatat sebagai pengeluaran "Biaya Transfer".
+              <Text style={[styles.autoHint, { color: colors.danger }]}>
+                + {money(transferFee)} dicatat sebagai Biaya / Pajak Transaksi
+              </Text>
+            ) : transferDiscount > 0 ? (
+              <Text style={[styles.autoHint, { color: colors.success }]}>
+                − {money(transferDiscount)} dicatat sebagai Diskon
               </Text>
             ) : null}
 
@@ -485,27 +466,6 @@ export default function AddTransactionScreen() {
             style={[styles.amountInput, { color: isIncome ? colors.success : colors.text }]}
           />
         </View>
-        {itemized ? (
-          (() => {
-            const total = amountValue > 0 ? amountValue : itemsSum;
-            const remainder = total - itemsSum;
-            if (Math.abs(remainder) < 1) {
-              return (
-                <Text style={styles.autoHint}>
-                  Sama dengan jumlah {validItemCount} item di bawah.
-                </Text>
-              );
-            }
-            return (
-              <Text style={[styles.autoHint, { color: remainder > 0 ? colors.danger : colors.success }]}>
-                {remainder > 0
-                  ? `+ ${money(remainder)} dicatat sebagai Biaya / Pajak Transaksi`
-                  : `− ${money(-remainder)} dicatat sebagai Diskon`}
-              </Text>
-            );
-          })()
-        ) : null}
-
         {/* Transaction name */}
         <Text style={styles.label}>Nama Transaksi</Text>
         <TextInput
@@ -530,7 +490,11 @@ export default function AddTransactionScreen() {
           </View>
         ) : null}
 
-        {/* Date */}
+        {/* Date. The DateTimePicker itself is rendered ONCE outside all
+         *  branches (see below) so the Transfer tab's date button also
+         *  triggers it — previously the picker only existed inside the
+         *  expense/income branch, so tapping "Tanggal" on Transfer did
+         *  nothing on the first mount. */}
         <Text style={styles.label}>Tanggal</Text>
         <TouchableOpacity
           activeOpacity={0.8}
@@ -541,45 +505,6 @@ export default function AddTransactionScreen() {
           <Text style={styles.dateText}>{formatDateLong(date)}</Text>
           <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
         </TouchableOpacity>
-        {showDate && Platform.OS === 'android' ? (
-          <DateTimePicker
-            value={new Date(`${date}T00:00:00`)}
-            mode="date"
-            display="default"
-            onChange={(e, d) => {
-              setShowDate(false);
-              if (e.type !== 'dismissed' && d) setDate(toISODate(d));
-            }}
-          />
-        ) : null}
-
-        {/* iOS: modal with backdrop. Tap backdrop or pick a date to close. */}
-        {Platform.OS === 'ios' ? (
-          <Modal
-            visible={showDate}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowDate(false)}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={() => setShowDate(false)}
-              style={styles.dateBackdrop}
-            >
-              <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.dateSheet}>
-                <DateTimePicker
-                  value={new Date(`${date}T00:00:00`)}
-                  mode="date"
-                  display="inline"
-                  onChange={(_, d) => {
-                    if (d) setDate(toISODate(d));
-                    setShowDate(false);
-                  }}
-                />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </Modal>
-        ) : null}
 
         {/* Source */}
         <Text style={styles.label}>Sumber Dana</Text>
@@ -784,15 +709,18 @@ export default function AddTransactionScreen() {
                   style={styles.itemAmountInput}
                 />
               </View>
-              {/* Row 3: Untuk Siapa + Kategori pickers side-by-side. */}
+              {/* Row 3: Untuk Siapa + Kategori pickers side-by-side. Uses the
+               *  shared `chip` style so height/padding match the main form
+               *  chips (dropped the earlier taller variant). */}
               <View style={styles.itemChipsRow}>
                 <TouchableOpacity
                   onPress={() => setWhoPickerFor(idx)}
                   activeOpacity={0.8}
                   style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
                 >
+                  <View style={[styles.chipDot, { backgroundColor: itemWho.color }]} />
                   <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
-                    {itemWho.emoji} {itemWho.label}
+                    {itemWho.label}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -819,6 +747,27 @@ export default function AddTransactionScreen() {
           <Text style={styles.itemsTotalLabel}>Total item</Text>
           <Text style={styles.itemsTotalValue}>{money(itemsSum)}</Text>
         </View>
+        {/* Diskon / Biaya hint sits right under the total so the user sees
+         *  "here's the sum of items, and here's how the extra/discount gets
+         *  routed." Was above the merchant name before, which read as noise. */}
+        {(() => {
+          const total = amountValue > 0 ? amountValue : itemsSum;
+          const remainder = total - itemsSum;
+          if (Math.abs(remainder) < 1) {
+            return (
+              <Text style={styles.autoHint}>
+                Sama dengan jumlah {validItemCount} item di atas.
+              </Text>
+            );
+          }
+          return (
+            <Text style={[styles.autoHint, { color: remainder > 0 ? colors.danger : colors.success }]}>
+              {remainder > 0
+                ? `+ ${money(remainder)} dicatat sebagai Biaya / Pajak Transaksi`
+                : `− ${money(-remainder)} dicatat sebagai Diskon`}
+            </Text>
+          );
+        })()}
         </>
         ) : null}
 
@@ -872,6 +821,48 @@ export default function AddTransactionScreen() {
           </TouchableOpacity>
         ) : null}
       </ScrollView>
+
+      {/* Date picker — mounted at the screen root so ALL type tabs (Expense,
+       *  Income, Transfer) can trigger it. Previously nested inside the
+       *  non-transfer branch, which is why "Tanggal" on Transfer needed a
+       *  tab switch before it would show up. */}
+      {showDate && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={new Date(`${date}T00:00:00`)}
+          mode="date"
+          display="default"
+          onChange={(e, d) => {
+            setShowDate(false);
+            if (e.type !== 'dismissed' && d) setDate(toISODate(d));
+          }}
+        />
+      ) : null}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={showDate}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowDate(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowDate(false)}
+            style={styles.dateBackdrop}
+          >
+            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.dateSheet}>
+              <DateTimePicker
+                value={new Date(`${date}T00:00:00`)}
+                mode="date"
+                display="inline"
+                onChange={(_, d) => {
+                  if (d) setDate(toISODate(d));
+                  setShowDate(false);
+                }}
+              />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : null}
 
       {/* Per-item category picker */}
       <Modal visible={pickerFor !== null} transparent animationType="fade" onRequestClose={() => setPickerFor(null)}>
