@@ -33,6 +33,10 @@ var TX_HEADERS = [
   'id', 'type', 'date', 'merchant', 'amount', 'category', 'incomeCategory',
   'who', 'source', 'creditCard', 'reimbursable', 'reimbursed', 'note', 'items',
   'image', 'scanned', 'deleted', 'createdAt', 'updatedAt',
+  // Added later. transferGroup links the two legs of a Transfer for
+  // aggregated rendering; ccPaidAt records the ISO date a CC bill was paid
+  // ahead of its natural due date (Bayar Tagihan on the Saldo screen).
+  'transferGroup', 'ccPaidAt',
 ];
 
 // --- Entry points ---------------------------------------------------------
@@ -122,6 +126,8 @@ function readTransactions() {
       deleted: boolish(t.deleted) || undefined,
       createdAt: Number(t.createdAt) || 0,
       updatedAt: Number(t.updatedAt) || Number(t.createdAt) || 0,
+      transferGroup: t.transferGroup ? String(t.transferGroup) : undefined,
+      ccPaidAt: t.ccPaidAt ? formatDate(t.ccPaidAt) : undefined,
     });
   }
   return out;
@@ -251,6 +257,8 @@ function writeTransactions(transactions) {
       t.deleted ? true : false,
       t.createdAt || 0,
       t.updatedAt || t.createdAt || 0,
+      t.transferGroup || '',
+      t.ccPaidAt || '',
     ];
   });
   sh.getRange(2, 1, rows.length, TX_HEADERS.length).setValues(rows);

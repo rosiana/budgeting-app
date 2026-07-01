@@ -14,6 +14,7 @@ import {
 } from '../store/selectors';
 import { colors, DEVICE_PERSON, fill, INVESTMENT_SOURCES, radius, sourceOf, SOURCES, spacing, whoOf } from '../theme';
 import { SourceId } from '../types';
+import { ccDueDate } from '../utils/cc';
 import { formatCurrency, formatDateShort, todayISO } from '../utils/format';
 import { formatAmountInput, parseAmountInput, useMoney } from '../utils/money';
 
@@ -282,6 +283,42 @@ export default function BalancesScreen() {
                   : 'Tidak ada tagihan berjalan 🎉'}
               </Text>
             </View>
+            {cc.outstanding > 0 ? (
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    'Bayar tagihan?',
+                    `${money(cc.outstanding)} akan langsung memotong saldo ${sourceOf(creditCard.paymentSource).label}.`,
+                    [
+                      { text: 'Batal', style: 'cancel' },
+                      {
+                        text: 'Bayar',
+                        onPress: () => {
+                          const today = todayISO();
+                          // Mark every still-outstanding CC purchase as paid
+                          // today. The selector treats ccPaidAt as an early-
+                          // settlement date, so paymentSource is debited on
+                          // the next render — no separate "payment" row is
+                          // needed.
+                          transactions.forEach((t) => {
+                            if (!t.creditCard) return;
+                            if (t.type === 'income') return;
+                            if (t.ccPaidAt) return;
+                            if (ccDueDate(t.date, creditCard) <= today) return; // already naturally settled
+                            updateTransaction({ ...t, ccPaidAt: today });
+                          });
+                        },
+                      },
+                    ]
+                  );
+                }}
+                style={styles.payBtn}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="checkmark-circle" size={16} color={colors.white} />
+                <Text style={styles.payBtnText}>Bayar</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View style={styles.paySrcRow}>
@@ -505,7 +542,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    gap: spacing.md,
   },
+  payBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    alignSelf: 'flex-end',
+  },
+  payBtnText: { color: colors.white, fontWeight: '800', fontSize: 13 },
   kkBillLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
   kkBillAmount: { fontSize: 22, color: colors.text, fontWeight: '800', marginTop: 2 },
   kkBillSub: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 2 },

@@ -202,7 +202,7 @@ export function sourceBalances(
     // A reimbursed expense is netted to zero — money went out then came back.
     if (t.reimbursed) continue;
     if (t.creditCard) {
-      if (isCcSettled(t.date, cc)) settledCc += t.amount;
+      if (isCcSettled(t, cc)) settledCc += t.amount;
     } else {
       bal[t.source] = (bal[t.source] ?? 0) - t.amount;
     }
@@ -272,7 +272,7 @@ export function creditCardStatus(
   const dueBuckets = new Map<string, number>();
   for (const t of transactions) {
     if (isIncome(t) || !t.creditCard) continue;
-    if (isCcSettled(t.date, cc)) continue;
+    if (isCcSettled(t, cc)) continue;
     outstanding += t.amount;
     const due = ccDueDate(t.date, cc);
     dueBuckets.set(due, (dueBuckets.get(due) ?? 0) + t.amount);

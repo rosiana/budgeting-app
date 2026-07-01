@@ -130,6 +130,13 @@ export interface Transaction {
   reimbursable?: boolean;
   /** Set once the reimbursement has been received (balance restored). */
   reimbursed?: boolean;
+  /**
+   * When a CC purchase is paid ahead of the due date (via Bayar Tagihan on the
+   * Saldo screen), this holds the ISO date the payment was made. The row then
+   * counts as settled from that date, so it deducts from paymentSource
+   * immediately instead of waiting for the natural due date.
+   */
+  ccPaidAt?: string;
   note?: string;
   items?: LineItem[];
   /** Set when the transaction was created from a scanned receipt */

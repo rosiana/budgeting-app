@@ -6,12 +6,18 @@ import { CategoryId, LineItem, ParsedReceipt } from '../types';
  * needs, including a best-effort category per line item.
  *
  * Everything is best-effort and editable in the UI afterwards — OCR is noisy
- * and store formats vary.
+ * and store formats vary. When in doubt we prefer "no item" over a wrong one,
+ * so the user can add missing rows manually rather than delete guesses.
  */
 
-// Money tokens: grouped thousands (25.000 / 1.250.000 / 25.000,00),
-// simple decimals (3.49 / 25,00), or a plain integer (15000).
+// Money tokens — Indonesian receipts print thousands as "." (25.000),
+// sometimes as space (25 000), rarely as "," (US-style). Trailing decimals
+// use "," (25.000,00). We also accept a bare 3+ digit integer (25000).
 const MONEY = /\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+,\d{2}|\d+\.\d{2}|\d{3,}/g;
+
+// Anchored version used to check "is this line ONLY an amount" (item wrap).
+const MONEY_ONLY =
+  /^\s*(?:rp\.?|idr)?\s*\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?\s*$|^\s*(?:rp\.?|idr)?\s*\d{3,}\s*$/i;
 
 const TOTAL_KEYWORDS = [
   'grand total',
@@ -29,20 +35,26 @@ const TOTAL_KEYWORDS = [
 const NOISE = [
   'subtotal', 'sub total', 'sub-total',
   'total item', 'qty', 'jml item', 'jumlah item',
-  'ppn', 'pb1', 'pajak', 'tax', 'dpp', 'service', 'biaya',
-  'diskon', 'discount', 'potongan', 'voucher',
+  'ppn', 'pb1', 'pajak', 'tax', 'dpp', 'service', 'biaya', 'svc',
+  'diskon', 'discount', 'potongan', 'voucher', 'promo',
   'tunai', 'cash', 'kembali', 'kembalian', 'change',
   'debit', 'kredit', 'credit', 'qris', 'gopay', 'ovo', 'dana', 'shopeepay',
-  'npwp', 'kasir', 'cashier', 'no.', 'struk', 'terima kasih',
+  'npwp', 'kasir', 'cashier', 'no.', 'struk', 'terima kasih', 'thank you',
   'tgl', 'tanggal', 'jam', 'waktu', 'date', 'time',
+  'poin', 'reward', 'member', 'membership',
+  'invoice', 'receipt', 'nota', 'bill',
+  'ref no', 'ref:', 'trace', 'auth',
 ];
 
 // Lines that contain a date (and little else) shouldn't become line items.
 const DATE_LINE = /\b(?:20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b/;
 
+// Lines that look like phone numbers / long ID codes — skip.
+const CODE_LINE = /^[\s\d\-/*#()]+$/;
+
 /** Parse a single money token (Indonesian-first) into a number of Rupiah. */
 function parseMoney(raw: string): number | null {
-  let s = raw.toLowerCase().replace(/rp|idr/g, '').replace(/[^\d.,]/g, '').trim();
+  let s = raw.toLowerCase().replace(/rp\.?|idr/g, '').replace(/[^\d.,\s]/g, '').replace(/\s/g, '').trim();
   if (!s) return null;
 
   const lastSep = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
@@ -70,6 +82,10 @@ function moneyTokens(line: string): number[] {
 function lastMoney(line: string): number | null {
   const tokens = moneyTokens(line);
   return tokens.length ? tokens[tokens.length - 1] : null;
+}
+
+function isMoneyOnly(line: string): boolean {
+  return MONEY_ONLY.test(line);
 }
 
 // --- Date extraction -------------------------------------------------------
@@ -118,18 +134,34 @@ function extractDate(text: string): string | undefined {
 
 // --- Total extraction ------------------------------------------------------
 
+/**
+ * Locate the grand total. Strategy:
+ *   1. Look for a total-keyword line (Total, Grand Total, Total Bayar, …).
+ *      If the amount is missing on that line, borrow the next non-noise
+ *      line's amount (some receipts wrap the label + value across lines).
+ *   2. Fall back to the LARGEST money value on the receipt — that's almost
+ *      always the total.
+ */
 function extractTotal(lines: string[]): number | undefined {
   let best: { rank: number; value: number } | null = null;
-  lines.forEach((line) => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const lower = line.toLowerCase();
-    if (NOISE.some((n) => lower.includes(n))) return;
+    // Skip lines that describe subtotals / taxes / discounts — they contain
+    // the word "total" too sometimes.
+    if (NOISE.some((n) => lower.includes(n))) continue;
     const idx = TOTAL_KEYWORDS.findIndex((k) => lower.includes(k));
-    if (idx === -1) return;
-    const value = lastMoney(line);
-    if (value == null) return;
+    if (idx === -1) continue;
+    let value = lastMoney(line);
+    if (value == null) {
+      // Wrap: "TOTAL\n125.000".
+      const next = lines[i + 1] ?? '';
+      if (isMoneyOnly(next)) value = lastMoney(next);
+    }
+    if (value == null) continue;
     const rank = TOTAL_KEYWORDS.length - idx; // earlier keyword = higher rank
     if (!best || rank >= best.rank) best = { rank, value };
-  });
+  }
   if (best) return (best as { value: number }).value;
 
   // Fallback: the largest money value is almost always the total.
@@ -145,12 +177,13 @@ function extractTotal(lines: string[]): number | undefined {
 // --- Merchant extraction ---------------------------------------------------
 
 function extractMerchant(lines: string[]): string | undefined {
-  for (const line of lines.slice(0, 5)) {
+  for (const line of lines.slice(0, 6)) {
     const trimmed = line.trim();
     if (trimmed.length < 3) continue;
     if (moneyTokens(trimmed).length) continue;
     if (/^\d+$/.test(trimmed)) continue;
-    if (/(struk|invoice|tel|telp|phone|www\.|http|@|npwp|jl\.|jalan)/i.test(trimmed)) continue;
+    if (CODE_LINE.test(trimmed)) continue;
+    if (/(struk|invoice|tel|telp|phone|www\.|http|@|npwp|jl\.|jalan|receipt|nota|bill)/i.test(trimmed)) continue;
     const letters = (trimmed.match(/[A-Za-z]/g) || []).length;
     if (letters < 2) continue;
     return titleCase(trimmed.replace(/\s{2,}/g, ' '));
@@ -194,29 +227,100 @@ export function guessCategory(text: string): CategoryId {
 
 // --- Line items ------------------------------------------------------------
 
+/**
+ * Merge "description on one line, amount on the next line" pairs before
+ * item extraction. Common on Indomaret / Alfamart / Superindo receipts where
+ * the item name + qty is on line N and the price sits on line N+1 aligned to
+ * the right.
+ */
+function foldWrappedItems(lines: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i];
+    const next = lines[i + 1] ?? '';
+    const curHasMoney = moneyTokens(cur).length > 0;
+    const nextIsMoneyOnly = isMoneyOnly(next);
+    const curLetters = (cur.match(/[A-Za-z]/g) || []).length;
+    // Description on this line (has letters, no amount) + next line is JUST
+    // an amount → fold them together.
+    if (!curHasMoney && curLetters >= 2 && nextIsMoneyOnly) {
+      out.push(`${cur} ${next.trim()}`);
+      i += 1;
+      continue;
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Split a "2 x 15.000 = 30.000" style qty line into a cleaner description
+ * plus the FINAL amount. If we can't parse it cleanly, keep the last money
+ * token (which is usually the total for that line).
+ */
+function itemAmount(line: string): number | null {
+  const tokens = moneyTokens(line);
+  if (!tokens.length) return null;
+  // Prefer the largest token — many receipts print "@ 15.000  30.000" with
+  // the line total on the right (the largest of the three).
+  return tokens.reduce((m, v) => (v > m ? v : m), tokens[0]);
+}
+
 function extractItems(lines: string[], total: number | undefined, fallback: CategoryId): LineItem[] {
   const items: LineItem[] = [];
-  for (const line of lines) {
+  const folded = foldWrappedItems(lines);
+  for (const line of folded) {
     const lower = line.toLowerCase();
     if (NOISE.some((n) => lower.includes(n))) continue;
     if (TOTAL_KEYWORDS.some((k) => lower.includes(k))) continue;
     if (DATE_LINE.test(line)) continue;
-    const amount = lastMoney(line);
+    if (CODE_LINE.test(line)) continue;
+    const amount = itemAmount(line);
     if (amount == null || amount <= 0) continue;
+    // Filter tiny values (< 100 IDR) — those are usually reference codes /
+    // reward points printed on the same line as the item.
+    if (amount < 100) continue;
+    // Skip lines that ARE the total.
+    if (total != null && Math.abs(amount - total) < 0.001) continue;
+    // Skip items whose amount is larger than the total (misparsed line).
+    if (total != null && amount > total * 1.1) continue;
+
     const desc = line
       .replace(MONEY, '')
-      .replace(/\b(qty|x\d+|@|rp|idr)\b/gi, '')
+      .replace(/\b(qty|x\d+|@|rp\.?|idr)\b/gi, '')
       .replace(/[|*•]/g, ' ')
+      .replace(/[-–—]+\s*$/, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
-    if (desc.length < 2) continue;
-    if (total != null && Math.abs(amount - total) < 0.001) continue; // skip the total row
+    // Description must contain some letters and be a reasonable length.
+    const letters = (desc.match(/[A-Za-z]/g) || []).length;
+    if (desc.length < 2 || letters < 2) continue;
+    // Skip lines that are just qty numbers like "2" or "x2".
+    if (/^x?\d+$/i.test(desc)) continue;
+
     const guessed = guessCategory(desc);
     items.push({
       description: titleCase(desc),
       amount,
       category: guessed === 'lainnya' ? fallback : guessed,
     });
+  }
+  // If items sum wildly exceeds the total (each line was probably counted
+  // twice), keep only the top-N by amount that still fits under total*1.05.
+  if (total != null && items.length) {
+    const sum = items.reduce((s, it) => s + it.amount, 0);
+    if (sum > total * 1.5) {
+      // Sort descending, keep the ones that (cumulatively) stay within total.
+      const sorted = [...items].sort((a, b) => b.amount - a.amount);
+      const kept: LineItem[] = [];
+      let running = 0;
+      for (const it of sorted) {
+        if (running + it.amount > total * 1.05) continue;
+        kept.push(it);
+        running += it.amount;
+      }
+      if (kept.length) return kept.slice(0, 30);
+    }
   }
   return items.slice(0, 30);
 }

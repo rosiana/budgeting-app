@@ -61,7 +61,12 @@ export default function ScanReceiptScreen() {
     setBusy(true);
     setStatus('Mengambil foto…');
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
+      // Full-quality capture — every point of compression hurts OCR accuracy
+      // on small print. skipProcessing keeps the sensor's raw resolution.
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 1,
+        skipProcessing: true,
+      });
       if (photo?.uri) await process(photo.uri);
       else setBusy(false);
     } catch (e) {

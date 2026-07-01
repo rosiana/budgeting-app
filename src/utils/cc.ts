@@ -1,4 +1,4 @@
-import { CreditCardConfig } from '../types';
+import { CreditCardConfig, Transaction } from '../types';
 import { todayISO } from './format';
 
 function pad(n: number): string {
@@ -43,9 +43,16 @@ export function ccDueDate(expenseISO: string, cfg: CreditCardConfig): string {
   return `${dueY}-${pad(dueM)}-${pad(day)}`;
 }
 
-/** A CC purchase counts as settled once its due date is on or before today. */
-export function isCcSettled(expenseISO: string, cfg: CreditCardConfig): boolean {
-  return ccDueDate(expenseISO, cfg) <= todayISO();
+/**
+ * A CC purchase counts as settled once EITHER
+ *   a) the user pre-paid it via Bayar Tagihan on the Saldo screen
+ *      (`ccPaidAt` is set to a date ≤ today), OR
+ *   b) its natural due date has arrived.
+ */
+export function isCcSettled(tx: Transaction, cfg: CreditCardConfig): boolean {
+  const today = todayISO();
+  if (tx.ccPaidAt && tx.ccPaidAt <= today) return true;
+  return ccDueDate(tx.date, cfg) <= today;
 }
 
 /** The next upcoming due date from today (the next time a bill must be paid). */
