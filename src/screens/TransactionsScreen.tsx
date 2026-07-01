@@ -147,10 +147,8 @@ export default function TransactionsScreen() {
         const toOwner = whoOf(toSrc.owner);
         const moved = movedOutLeg.amount;
         const items: DisplayItem[] = [
-          // Both moved legs render as +transferAmount green (via
-          // renderAsIncome) — the user wants each side to read as "the
-          // amount that crossed". itemType stays honest though:
-          // transfer_out belongs in Keluar tab, transfer_in in Masuk tab.
+          // "Ke [account]" is money leaving the source — a real expense.
+          // Red −, red arrow-up icon, surfaces in the Keluar tab only.
           {
             description: `Ke ${toSrc.label}`,
             amount: moved,
@@ -159,10 +157,11 @@ export default function TransactionsScreen() {
             chipLabel: fromOwner.label,
             chipColor: fromOwner.color,
             metaText: fromSrc.label,
-            iconOverride: { name: 'arrow-up-circle', color: colors.success },
+            iconOverride: { name: 'arrow-up-circle', color: colors.danger },
             itemType: 'expense',
-            renderAsIncome: true,
           },
+          // "Dari [account]" is money arriving at the destination — a real
+          // income. Green +, green arrow-down icon, surfaces in Masuk only.
           {
             description: `Dari ${fromSrc.label}`,
             amount: moved,
@@ -173,10 +172,10 @@ export default function TransactionsScreen() {
             metaText: toSrc.label,
             iconOverride: { name: 'arrow-down-circle', color: colors.success },
             itemType: 'income',
-            renderAsIncome: true,
           },
         ];
-        // Fee = real expense on the source account.
+        // Fee = real expense on the source account. Uses a receipt icon to
+        // distinguish it visually from the moved-leg arrow.
         if (feeLeg) {
           items.push({
             description: 'Biaya / Pajak Transaksi',
@@ -186,7 +185,7 @@ export default function TransactionsScreen() {
             chipLabel: fromOwner.label,
             chipColor: fromOwner.color,
             metaText: fromSrc.label,
-            iconOverride: { name: 'arrow-up-circle', color: colors.danger },
+            iconOverride: { name: 'receipt', color: colors.danger },
             itemType: 'expense',
           });
         } else if (discountLeg) {
@@ -306,7 +305,18 @@ export default function TransactionsScreen() {
           chipColor: owner.color,
           metaText,
           iconOverride: {
-            name: displayIsIncome ? 'arrow-down-circle' : 'arrow-up-circle',
+            // Investasi items use the same trending chart icon as the
+            // Bibit / Ajaib / Tring saldo rows so the visual link is
+            // obvious — trending-up green for untung, trending-down red
+            // for rugi. Penyesuaian Saldo keeps the arrow-up/down.
+            name:
+              kind === 'investasi'
+                ? displayIsIncome
+                  ? 'trending-up'
+                  : 'trending-down'
+                : displayIsIncome
+                  ? 'arrow-down-circle'
+                  : 'arrow-up-circle',
             color: displayIsIncome ? colors.success : colors.danger,
           },
           itemType: displayIsIncome ? 'income' : 'expense',
@@ -499,6 +509,16 @@ export default function TransactionsScreen() {
         //     net worth that day.
         subtotal: g.items.reduce((s, tRaw) => {
           const t = tRaw as DisplayTx;
+          // Penyesuaian Saldo and Penyesuaian Investasi are balance
+          // reconciliations — they exist to correct a saldo, not to record
+          // real spending or income. They MUST NOT change the day's net,
+          // whether they're standalone rows or aggregated daily groups.
+          const isReconciliation =
+            t.category === 'penyesuaian_saldo' ||
+            t.category === 'rugi_investasi' ||
+            t.incomeCategory === 'penyesuaian_saldo_in' ||
+            t.incomeCategory === 'investasi';
+          if (isReconciliation) return s;
           if (t.transferSummary || t.componentIds) {
             if (activeItemType) {
               const sum = matchingItems(t).reduce((a, it) => a + it.amount, 0);
@@ -513,6 +533,9 @@ export default function TransactionsScreen() {
               }
               return s + net;
             }
+            // A daily group that survived the reconciliation check above
+            // isn't Penyesuaian — nothing to sum here beyond regular legs
+            // (kept for future group kinds).
             const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
             const net = legs.reduce(
               (a, l) => a + (l.type === 'income' ? l.amount : -l.amount),
