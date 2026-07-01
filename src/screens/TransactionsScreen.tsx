@@ -121,22 +121,30 @@ export default function TransactionsScreen() {
         if (seenTransfer.has(t.transferGroup)) continue;
         seenTransfer.add(t.transferGroup);
         const legs = monthTx.filter((x) => x.transferGroup === t.transferGroup);
-        const expLeg = legs.find((x) => x.type !== 'income');
-        const incLeg = legs.find((x) => x.type === 'income');
-        if (!expLeg || !incLeg) {
+        // Under the 3-leg model:
+        //   - transfer_out expense = "money moved" out (equal to transfer_in)
+        //   - transfer_in income   = "money moved" in
+        //   - biaya_pajak expense  = fee (out > in case), optional
+        //   - diskon income        = discount (in > out case), optional
+        // Legacy 2-leg rows (from before the split) are still valid: no fee
+        // leg, transfer_out.amount already = transfer_in.amount.
+        const movedOutLeg = legs.find((x) => x.category === 'transfer_out');
+        const movedInLeg = legs.find((x) => x.incomeCategory === 'transfer_in');
+        const feeLeg = legs.find((x) => x.category === 'biaya_pajak');
+        const discountLeg = legs.find((x) => x.category === 'diskon' && x.type === 'income');
+        if (!movedOutLeg || !movedInLeg) {
           out.push(t); // malformed — leave alone
           continue;
         }
-        const fromSrc = sourceOf(expLeg.source);
-        const toSrc = sourceOf(incLeg.source);
+        const fromSrc = sourceOf(movedOutLeg.source);
+        const toSrc = sourceOf(movedInLeg.source);
         const fromOwner = whoOf(fromSrc.owner);
         const toOwner = whoOf(toSrc.owner);
-        const outAmt = expLeg.amount;
-        const inAmt = incLeg.amount;
+        const moved = movedOutLeg.amount;
         const items: DisplayItem[] = [
           {
             description: `Ke ${toSrc.label}`,
-            amount: outAmt,
+            amount: moved,
             category: 'transfer_out',
             who: fromOwner.id,
             chipLabel: fromOwner.label,
@@ -147,7 +155,7 @@ export default function TransactionsScreen() {
           },
           {
             description: `Dari ${fromSrc.label}`,
-            amount: inAmt,
+            amount: moved,
             category: 'lainnya',
             who: toOwner.id,
             chipLabel: toOwner.label,
@@ -157,28 +165,42 @@ export default function TransactionsScreen() {
             itemType: 'income',
           },
         ];
-        const delta = outAmt - inAmt;
-        if (Math.abs(delta) >= 1) {
+        // Fee = real expense on the source account. Uses the standard chip
+        // (owner + account name) — no more "otomatis" label.
+        if (feeLeg) {
           items.push({
-            description: delta > 0 ? 'Biaya / Pajak Transaksi' : 'Diskon',
-            amount: Math.abs(delta),
-            category: delta > 0 ? 'biaya_pajak' : 'diskon',
-            who: 'rumah',
-            // No chipLabel → renders "otomatis" text. Counts as an expense
-            // for mode filtering (fee is real spending, discount is negative
-            // spending — either way, tied to the outgoing side).
+            description: 'Biaya / Pajak Transaksi',
+            amount: feeLeg.amount,
+            category: 'biaya_pajak',
+            who: fromOwner.id,
+            chipLabel: fromOwner.label,
+            chipColor: fromOwner.color,
+            metaText: fromSrc.label,
+            iconOverride: { name: 'arrow-up-circle', color: colors.danger },
             itemType: 'expense',
+          });
+        } else if (discountLeg) {
+          items.push({
+            description: 'Diskon',
+            amount: discountLeg.amount,
+            category: 'diskon',
+            who: toOwner.id,
+            chipLabel: toOwner.label,
+            chipColor: toOwner.color,
+            metaText: toSrc.label,
+            iconOverride: { name: 'arrow-down-circle', color: colors.success },
+            itemType: 'income',
           });
         }
         out.push({
-          ...expLeg,
+          ...movedOutLeg,
           merchant: `Transfer ${fromSrc.label} → ${toSrc.label}`,
-          amount: outAmt,
+          // Shell amount = the transferred amount (money that actually
+          // moved), rendered NEUTRAL / black. Fee / discount contribute to
+          // the daily subtotal but don't inflate the shell amount.
+          amount: moved,
           items,
           transferSummary: {
-            // Parent shell chip is now [From Who] → [To Who] (owners), not
-            // account names. Item rows carry the account name after the
-            // owner chip.
             fromLabel: fromOwner.label,
             toLabel: toOwner.label,
             fromColor: fromOwner.color,
@@ -421,13 +443,46 @@ export default function TransactionsScreen() {
     () =>
       groupByDate(filtered).map((g) => ({
         title: formatDateFriendly(g.date),
-        // Net for the day: income adds, expense subtracts (using shown amount).
-        // Aggregated transfer/daily-group rows contribute nothing — they don't
-        // represent net spending, just money moving or being reconciled.
-        subtotal: g.items.reduce((s, t) => {
-          const dt = t as DisplayTx;
-          if (dt.transferSummary || dt.componentIds) return s;
-          return s + (t.type === 'income' ? t.amount : -rowAmount(dt));
+        // Net for the day: income adds, expense subtracts.
+        // Special cases:
+        //   - Regular tx: income ? +amount : -rowAmount(shown, respecting filter)
+        //   - Aggregated Transfer: contributes only the fee (−) or discount
+        //     (+) — the moved-pair itself is zero net (money just switched
+        //     accounts). In Masuk/Keluar mode uses the filtered items sum.
+        //   - Aggregated Penyesuaian Saldo / Investasi: signed net of every
+        //     leg (income adds, expense subtracts). User wants Investasi to
+        //     move the daily subtotal even though selectors don't count it
+        //     as real income/spending, because on Saldo it still affected
+        //     net worth that day.
+        subtotal: g.items.reduce((s, tRaw) => {
+          const t = tRaw as DisplayTx;
+          if (t.transferSummary || t.componentIds) {
+            // Aggregated. Under a mode filter, use the filtered item sum;
+            // otherwise walk the underlying legs.
+            if (activeItemType) {
+              const sum = matchingItems(t).reduce((a, it) => a + it.amount, 0);
+              return s + (activeItemType === 'income' ? sum : -sum);
+            }
+            if (t.transferSummary) {
+              // Sum fee (−) + discount (+) legs only. The moved pair cancels
+              // to zero for daily-net purposes.
+              const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
+              let net = 0;
+              for (const l of legs) {
+                if (l.category === 'biaya_pajak') net -= l.amount;
+                else if (l.category === 'diskon' && l.type === 'income') net += l.amount;
+              }
+              return s + net;
+            }
+            // Daily group: signed net across all legs.
+            const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
+            const net = legs.reduce(
+              (a, l) => a + (l.type === 'income' ? l.amount : -l.amount),
+              0
+            );
+            return s + net;
+          }
+          return s + (t.type === 'income' ? t.amount : -rowAmount(t));
         }, 0),
         // Newest first within the day (by createdAt; updatedAt as tiebreaker).
         data: [...g.items].sort(
@@ -435,7 +490,7 @@ export default function TransactionsScreen() {
             (b.createdAt ?? b.updatedAt ?? 0) - (a.createdAt ?? a.updatedAt ?? 0)
         ),
       })),
-    [filtered, activeCat, activeNameQuery]
+    [filtered, monthTx, activeCat, activeNameQuery, activeItemType]
   );
 
   const confirmDelete = (tx: DisplayTx) => {
@@ -455,15 +510,39 @@ export default function TransactionsScreen() {
   };
 
   const openEdit = (tx: DisplayTx) => {
-    // Synthesized rows (Transfer group, daily Penyesuaian) aren't a single
-    // saved transaction, so there's nothing sensible to edit. Explain and
-    // offer to delete instead.
+    // Transfer aggregate → open the form on the Transfer tab, pre-filled
+    // with the group's from/to accounts and the actual out / in amounts.
+    // Save wipes the old legs and writes fresh ones (see AddTransactionScreen).
+    if (tx.transferSummary && tx.componentIds && tx.componentIds.length >= 2) {
+      const legs = transactions.filter((t) => t.transferGroup === tx.transferGroup);
+      const outLeg = legs.find((l) => l.category === 'transfer_out');
+      const inLeg = legs.find((l) => l.incomeCategory === 'transfer_in');
+      const feeLeg = legs.find((l) => l.category === 'biaya_pajak');
+      const discountLeg = legs.find((l) => l.category === 'diskon' && l.type === 'income');
+      if (!outLeg || !inLeg || !tx.transferGroup) return;
+      const moved = outLeg.amount;
+      const feeAmt = feeLeg?.amount ?? 0;
+      const discAmt = discountLeg?.amount ?? 0;
+      navigation.navigate('AddTransaction', {
+        draft: {
+          type: 'transfer',
+          date: tx.date,
+          transfer: {
+            group: tx.transferGroup,
+            fromSource: outLeg.source,
+            toSource: inLeg.source,
+            amountOut: moved + feeAmt,
+            amountIn: moved + discAmt,
+          },
+        },
+      });
+      return;
+    }
+    // Daily penyesuaian / investasi groups still aren't a single row to edit.
     if (tx.componentIds && tx.componentIds.length > 1) {
       Alert.alert(
-        tx.transferSummary ? 'Transfer tidak bisa diubah' : 'Grup harian tidak bisa diubah',
-        tx.transferSummary
-          ? 'Hapus lalu tambah ulang jika ingin mengubah nominal atau akun.'
-          : 'Hapus lalu tambah ulang penyesuaian jika perlu diubah.',
+        'Grup harian tidak bisa diubah',
+        'Hapus lalu tambah ulang penyesuaian jika perlu diubah.',
         [{ text: 'OK' }]
       );
       return;
@@ -922,13 +1001,22 @@ function TxRow({
               {tx.merchant}
             </Text>
             {/* Amount rendering:
-             *   - Daily group in Semua mode → signed net for the whole day.
-             *   - Any row with displayType=income (real income, transfer
-             *     income leg in Masuk mode, positive legs in Masuk mode) →
-             *     green with +.
-             *   - Otherwise → default expense color. */}
+             *   - Transfer aggregate in Semua mode → BLACK, no sign. It's
+             *     the "money moved" amount; neither income nor expense.
+             *   - Daily group (Penyesuaian) in Semua mode → signed net for
+             *     the whole day, green+/red-.
+             *   - Any row with displayType=income (real income, filter
+             *     narrowed to income items) → green +.
+             *   - Any row with displayType=expense → RED with a leading −.
+             */}
             {(() => {
-              const useNet = groupNet != null && !hasItemFilter;
+              const isTransferShell = !!tx.transferSummary && !hasItemFilter;
+              const useNet = groupNet != null && !hasItemFilter && !isTransferShell;
+              if (isTransferShell) {
+                return (
+                  <Text style={styles.amount}>{money(shown)}</Text>
+                );
+              }
               if (useNet) {
                 return (
                   <Text
@@ -943,8 +1031,13 @@ function TxRow({
                 );
               }
               return (
-                <Text style={[styles.amount, income && { color: colors.success }]}>
-                  {income ? '+' : ''}
+                <Text
+                  style={[
+                    styles.amount,
+                    income ? { color: colors.success } : { color: colors.danger },
+                  ]}
+                >
+                  {income ? '+' : '−'}
                   {money(shown)}
                 </Text>
               );
@@ -1048,9 +1141,12 @@ function TxRow({
                       {it.description}
                     </Text>
                     <Text
-                      style={[styles.amount, itemIsIncome && { color: colors.success }]}
+                      style={[
+                        styles.amount,
+                        itemIsIncome ? { color: colors.success } : { color: colors.danger },
+                      ]}
                     >
-                      {itemIsIncome ? '+' : ''}
+                      {itemIsIncome ? '+' : '−'}
                       {money(it.amount)}
                     </Text>
                   </View>
@@ -1082,8 +1178,14 @@ function TxRow({
                   <Text style={styles.merchant} numberOfLines={1}>
                     {remainderLabel}
                   </Text>
-                  <Text style={[styles.amount, remainder < 0 && { color: colors.success }]}>
-                    {remainder < 0 ? '−' : ''}{money(Math.abs(remainder))}
+                  <Text
+                    style={[
+                      styles.amount,
+                      remainder < 0 ? { color: colors.success } : { color: colors.danger },
+                    ]}
+                  >
+                    {remainder < 0 ? '+' : '−'}
+                    {money(Math.abs(remainder))}
                   </Text>
                 </View>
                 <View style={styles.rowBottom}>

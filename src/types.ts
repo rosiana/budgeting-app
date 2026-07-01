@@ -16,6 +16,7 @@ export type CategoryId =
   | 'sedekah' // Sedekah & Hadiah (charity & gifts)
   | 'kesehatan' // Kesehatan (health)
   | 'investasi_luar' // Investasi Luar (outside investment)
+  | 'bunga_expense' // Bunga (interest paid — loans, cards, admin fees)
   | 'biaya_pajak' // Biaya / Pajak Transaksi (covers transfer fees + extras)
   | 'diskon' // Diskon — counts as negative spending on a multi-item parent
   | 'rugi_investasi' // Rugi Investasi (auto, when an investment balance is lowered)

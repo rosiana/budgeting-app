@@ -24,20 +24,21 @@ const isIncome = (t: Transaction) => t.type === 'income';
 // legs are money moving between accounts (not spending), and balance
 // adjustments are corrections — none of these should pollute the
 // spending/budget/income totals.
+// NB: we can NO LONGER blanket-exclude rows that carry a transferGroup —
+// a Transfer now saves three legs, and the third (Biaya / Diskon Transfer)
+// IS real spending / income on top of the "money moved" pair. What we
+// exclude is the moved-pair itself, done via the category / incomeCategory
+// check instead.
 const countsAsSpending = (t: Transaction) =>
   isExpense(t) &&
   !t.reimbursable &&
-  !t.transferGroup &&
   t.category !== 'penyesuaian_saldo' &&
   t.category !== 'transfer_out' &&
-  // Investment losses are tracked on Saldo but don't reduce spending budgets.
   t.category !== 'rugi_investasi';
 const countsAsIncome = (t: Transaction) =>
   isIncome(t) &&
-  !t.transferGroup &&
   t.incomeCategory !== 'penyesuaian_saldo_in' &&
   t.incomeCategory !== 'transfer_in' &&
-  // Investment gains are tracked on Saldo but don't inflate monthly income.
   t.incomeCategory !== 'investasi';
 
 /** Total expenses (income and reimbursables ignored). */

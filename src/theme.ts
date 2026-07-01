@@ -73,6 +73,7 @@ export const CATEGORIES: Category[] = [
   { id: 'sedekah', label: 'Sedekah & Hadiah', icon: 'heart', color: '#EC6F9C' },
   { id: 'kesehatan', label: 'Kesehatan', icon: 'medkit', color: '#E26B6B' },
   { id: 'investasi_luar', label: 'Investasi Luar', icon: 'business', color: '#19B6A7' },
+  { id: 'bunga_expense', label: 'Bunga', icon: 'remove-circle', color: '#8A6E56' },
   // Internal/system categories — hidden from the main category-filter strip
   // and from Anggaran (they're produced by transfers / multi-item extras /
   // balance adjustments rather than picked by the user).
@@ -89,7 +90,7 @@ export const CATEGORIES: Category[] = [
 export const PICKABLE_CATEGORIES: CategoryId[] = [
   'cicilan', 'utilitas', 'transportasi', 'skincare', 'makan', 'langganan',
   'art', 'sekolah', 'fun', 'rumah', 'perabot', 'fashion', 'rokok', 'sedekah',
-  'kesehatan', 'investasi_luar', 'lainnya',
+  'kesehatan', 'investasi_luar', 'bunga_expense', 'lainnya',
 ];
 
 /** Categories that show up in Anggaran — system categories are excluded. */

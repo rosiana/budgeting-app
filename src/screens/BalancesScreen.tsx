@@ -5,6 +5,7 @@ import { Text, TextInput } from '../components/typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card, GridBg, PrimaryButton, PrivacyEye, SectionTitle, SegmentTabs } from '../components/ui';
 import { useBudget } from '../store/BudgetContext';
+import { pullFromSheet } from '../sync/sheets';
 import {
   creditCardStatus,
   pendingReimbursements,
@@ -32,6 +33,7 @@ export default function BalancesScreen() {
     syncStatus,
     syncError,
     syncNow,
+    replaceData,
   } = useBudget();
   const money = useMoney();
 
@@ -106,6 +108,13 @@ export default function BalancesScreen() {
 
   const [editing, setEditing] = useState<SourceId | null>(null);
   const [draftValue, setDraftValue] = useState('');
+  // Collapsed by default — the two DayStepper rows read as clutter for a
+  // user who almost never changes them after the first setup.
+  const [showCcSettings, setShowCcSettings] = useState(false);
+  // Same treatment for the Google Sheet setup fields — most sessions won't
+  // need to touch the URL/token, they just want to tap "Simpan Data
+  // Sekarang" (push).
+  const [showSyncSettings, setShowSyncSettings] = useState(false);
 
   // Current running balance for a single source, used to compute the delta.
   const balanceOf = (s: SourceId): number =>
@@ -171,6 +180,32 @@ export default function BalancesScreen() {
     setSyncConfig({ url: url.trim(), token: token.trim() });
     // Wait a tick so the new config is in state before syncing.
     setTimeout(() => syncNow(), 50);
+  };
+
+  // Pull from the sheet — meant for a fresh device where the local store is
+  // empty. Confirms first because it REPLACES all local data with whatever
+  // the sheet has.
+  const pullFromSheetNow = () => {
+    Alert.alert(
+      'Ambil data dari Sheet?',
+      'Semua data lokal di HP ini akan diganti dengan yang ada di Google Sheet. Cocok untuk HP baru.',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Ambil',
+          style: 'destructive',
+          onPress: async () => {
+            setSyncConfig({ url: url.trim(), token: token.trim() });
+            try {
+              const data = await pullFromSheet({ url: url.trim(), token: token.trim() });
+              replaceData(data);
+            } catch (e: any) {
+              Alert.alert('Gagal ambil data', String(e?.message ?? e));
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -326,54 +361,54 @@ export default function BalancesScreen() {
             <Text style={styles.paySrcText}>Dibayar dari BCA</Text>
           </View>
 
-          <DayStepper
-            label="Tanggal cetak (cutoff)"
-            value={creditCard.statementDay}
-            onMinus={() => stepDay('statementDay', -1)}
-            onPlus={() => stepDay('statementDay', 1)}
-          />
-          <DayStepper
-            label="Tanggal jatuh tempo"
-            value={creditCard.dueDay}
-            onMinus={() => stepDay('dueDay', -1)}
-            onPlus={() => stepDay('dueDay', 1)}
-          />
-          <Text style={styles.settingHint}>
-            Belanja kartu kredit memotong saldo {sourceOf(creditCard.paymentSource).label} saat
-            jatuh tempo, bukan saat dicatat.
-          </Text>
+          {/* Pengaturan Tanggal — a collapsible section for the cutoff /
+           *  due-day steppers. Rarely edited after first setup, so hidden
+           *  behind an accordion to keep the card compact. */}
+          <TouchableOpacity
+            onPress={() => setShowCcSettings((v) => !v)}
+            activeOpacity={0.7}
+            style={styles.accordionHeader}
+          >
+            <Text style={styles.accordionTitle}>Pengaturan Tanggal</Text>
+            <Ionicons
+              name={showCcSettings ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          {showCcSettings ? (
+            <>
+              <DayStepper
+                label="Tanggal cetak (cutoff)"
+                value={creditCard.statementDay}
+                onMinus={() => stepDay('statementDay', -1)}
+                onPlus={() => stepDay('statementDay', 1)}
+              />
+              <DayStepper
+                label="Tanggal jatuh tempo"
+                value={creditCard.dueDay}
+                onMinus={() => stepDay('dueDay', -1)}
+                onPlus={() => stepDay('dueDay', 1)}
+              />
+              <Text style={styles.settingHint}>
+                Belanja kartu kredit memotong saldo {sourceOf(creditCard.paymentSource).label} saat
+                jatuh tempo, bukan saat dicatat.
+              </Text>
+            </>
+          ) : null}
         </Card>
 
-        {/* Google Sheet sync */}
+        {/* Google Sheet sync — the URL/token fields (used only when moving
+         *  to a new account) hide behind a "Pengaturan Akun Baru" accordion.
+         *  The primary action stays visible: Simpan Data Sekarang pushes the
+         *  current data to the sheet. Ambil Data (pull) sits inside the
+         *  accordion since it's a "new device" step, not day-to-day. */}
         <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
         <Card style={{ marginTop: 0 }}>
           <Text style={styles.settingHint}>
-            Setelah URL + token diisi, MoMoney akan **otomatis** sinkron
+            Setelah URL + token diisi, MoMoney akan otomatis sinkron
             (gabungan dua arah) setiap kali ada perubahan di HP manapun.
           </Text>
-
-          <Text style={styles.syncLabel}>URL Web App</Text>
-          <TextInput
-            value={url}
-            onChangeText={setUrl}
-            placeholder="https://script.google.com/macros/s/…/exec"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.syncInput}
-          />
-
-          <Text style={styles.syncLabel}>Token rahasia</Text>
-          <TextInput
-            value={token}
-            onChangeText={setToken}
-            placeholder="token yang sama dengan di Code.gs"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            style={styles.syncInput}
-          />
 
           <View style={styles.syncStatus}>
             {syncStatus === 'syncing' ? (
@@ -407,11 +442,66 @@ export default function BalancesScreen() {
 
           <View style={{ height: spacing.md }} />
           <PrimaryButton
-            label="Simpan & sinkron sekarang"
-            icon="sync"
+            label="Simpan Data Sekarang"
+            icon="cloud-upload"
             onPress={saveAndSync}
             disabled={syncStatus === 'syncing' || !url}
           />
+
+          <TouchableOpacity
+            onPress={() => setShowSyncSettings((v) => !v)}
+            activeOpacity={0.7}
+            style={styles.accordionHeader}
+          >
+            <Text style={styles.accordionTitle}>Pengaturan Akun Baru</Text>
+            <Ionicons
+              name={showSyncSettings ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+          {showSyncSettings ? (
+            <>
+              <Text style={styles.syncLabel}>URL Web App</Text>
+              <TextInput
+                value={url}
+                onChangeText={setUrl}
+                placeholder="https://script.google.com/macros/s/…/exec"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.syncInput}
+              />
+
+              <Text style={styles.syncLabel}>Token rahasia</Text>
+              <TextInput
+                value={token}
+                onChangeText={setToken}
+                placeholder="token yang sama dengan di Code.gs"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                style={styles.syncInput}
+              />
+
+              {/* Ambil Data — pulls the sheet's data down and REPLACES the
+               *  local store. Only useful when setting up a fresh device on
+               *  an existing account; hence tucked inside this accordion. */}
+              <TouchableOpacity
+                onPress={pullFromSheetNow}
+                disabled={!url || !token || syncStatus === 'syncing'}
+                style={[
+                  styles.pullBtn,
+                  (!url || !token || syncStatus === 'syncing') && { opacity: 0.5 },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="cloud-download" size={16} color={colors.primary} />
+                <Text style={styles.pullText}>Ambil Data (untuk HP baru)</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
         </Card>
 
       </ScrollView>
@@ -593,6 +683,16 @@ const styles = StyleSheet.create({
   },
   stepValue: { fontSize: 16, fontWeight: '800', color: colors.text, minWidth: 24, textAlign: 'center' },
   settingHint: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, lineHeight: 17 },
+  accordionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  accordionTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
   syncLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md, marginBottom: 6 },
   syncInput: {
     backgroundColor: colors.bg,

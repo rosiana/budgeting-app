@@ -90,15 +90,27 @@ export default function AddTransactionScreen() {
   const isIncome = type === 'income';
   const isTransfer = type === 'transfer';
 
-  // Transfer state: from-source, to-source, out and in amounts.
-  const [fromSource, setFromSource] = useState<SourceId>(defaultSource);
-  const [toSourcesPerson, setToSourcesPerson] = useState<'rosi' | 'rizal'>(DEVICE_PERSON);
+  // Transfer state: from-source, to-source, out and in amounts. When editing
+  // a transfer, the draft carries a `transfer` payload that seeds these.
+  const editingTransfer = draft?.transfer;
+  const [fromSource, setFromSource] = useState<SourceId>(
+    editingTransfer?.fromSource ?? defaultSource
+  );
+  const [toSourcesPerson, setToSourcesPerson] = useState<'rosi' | 'rizal'>(
+    editingTransfer ? sourceOf(editingTransfer.toSource).owner : DEVICE_PERSON
+  );
   const otherPerson: 'rosi' | 'rizal' = DEVICE_PERSON === 'rosi' ? 'rizal' : 'rosi';
   const [toSource, setToSource] = useState<SourceId>(
-    sourcesForPerson(DEVICE_PERSON).filter((s) => s.id !== defaultSource)[0]?.id ?? defaultSource
+    editingTransfer?.toSource ??
+      sourcesForPerson(DEVICE_PERSON).filter((s) => s.id !== defaultSource)[0]?.id ??
+      defaultSource
   );
-  const [amountOut, setAmountOut] = useState('');
-  const [amountIn, setAmountIn] = useState('');
+  const [amountOut, setAmountOut] = useState(
+    editingTransfer ? formatAmountInput(String(Math.round(editingTransfer.amountOut))) : ''
+  );
+  const [amountIn, setAmountIn] = useState(
+    editingTransfer ? formatAmountInput(String(Math.round(editingTransfer.amountIn))) : ''
+  );
   const amountOutValue = parseAmountInput(amountOut);
   const amountInValue = parseAmountInput(amountIn);
   // Positive = fee (sent more than received). Negative = discount (received
@@ -185,6 +197,40 @@ export default function AddTransactionScreen() {
   // Index of the item whose category picker is open (null = closed).
   const [pickerFor, setPickerFor] = useState<number | null>(null);
   const [whoPickerFor, setWhoPickerFor] = useState<number | null>(null);
+  // Track which item description input is currently focused so we only show
+  // its autosuggest strip (not all of them at once).
+  const [focusedItemIdx, setFocusedItemIdx] = useState<number | null>(null);
+
+  // Deduped catalogue of every line-item description the user has typed
+  // before, along with the last-used category / who so tapping a suggestion
+  // auto-fills those too.
+  const itemDescCatalog = useMemo(() => {
+    const seen = new Map<string, { description: string; category: CategoryId; who: WhoId }>();
+    for (const t of transactions) {
+      if (!t.items) continue;
+      for (const it of t.items) {
+        const desc = (it.description || '').trim();
+        if (!desc) continue;
+        // Keep the most recent (transactions iterate newest-first from state).
+        if (!seen.has(desc.toLowerCase())) {
+          seen.set(desc.toLowerCase(), {
+            description: desc,
+            category: it.category,
+            who: it.who ?? t.who,
+          });
+        }
+      }
+    }
+    return [...seen.values()];
+  }, [transactions]);
+
+  const itemSuggestionsFor = (query: string): typeof itemDescCatalog => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 1) return [];
+    return itemDescCatalog
+      .filter((s) => s.description.toLowerCase().includes(q) && s.description.toLowerCase() !== q)
+      .slice(0, 5);
+  };
 
   const amountValue = useMemo(() => toAmount(amount), [amount]);
   const itemsSum = useMemo(
@@ -220,19 +266,29 @@ export default function AddTransactionScreen() {
   const onSave = () => {
     if (!canSave) return;
     if (isTransfer) {
-      const tg = uid();
+      // Editing an existing transfer? Wipe every leg with the old group id
+      // first so we're not double-counting when the new legs are added.
+      if (editingTransfer) {
+        transactions
+          .filter((t) => t.transferGroup === editingTransfer.group)
+          .forEach((t) => deleteTransaction(t.id));
+      }
+      const tg = editingTransfer ? uid() : uid();
       const fromLabel = sourceOf(fromSource).label;
       const toLabel = sourceOf(toSource).label;
-      // Two clean rows linked by transferGroup. The Transaksi screen
-      // aggregates them back into ONE accordion visually. Each row keeps its
-      // real amount so the from-account is debited by amountOut and the
-      // to-account is credited by amountIn — the fee / discount emerges
-      // naturally from the difference between the two amounts.
+      // Three rows linked by transferGroup: transferred amount (equal on
+      // both legs, = the smaller of amountOut/amountIn — the "money that
+      // actually moved"), plus a third row for the FEE (out > in, real
+      // spending on the source account) or DISCOUNT (in > out, real income
+      // on the destination account).
+      const moved = Math.min(amountOutValue, amountInValue);
+      const fee = Math.max(0, amountOutValue - amountInValue); // out extra > in received
+      const discount = Math.max(0, amountInValue - amountOutValue); // in extra > out sent
       addTransaction({
         type: 'expense',
         date,
         merchant: `Transfer ke ${toLabel}`,
-        amount: amountOutValue,
+        amount: moved,
         category: 'transfer_out',
         who: 'rumah',
         source: fromSource,
@@ -242,13 +298,41 @@ export default function AddTransactionScreen() {
         type: 'income',
         date,
         merchant: `Transfer dari ${fromLabel}`,
-        amount: amountInValue,
+        amount: moved,
         category: 'lainnya',
         incomeCategory: 'transfer_in',
         who: 'rumah',
         source: toSource,
         transferGroup: tg,
       });
+      if (fee > 0) {
+        // Real spending against the source account — counts in daily
+        // subtotals and reduces the source balance.
+        addTransaction({
+          type: 'expense',
+          date,
+          merchant: `Biaya Transfer ${fromLabel} → ${toLabel}`,
+          amount: fee,
+          category: 'biaya_pajak',
+          who: 'rumah',
+          source: fromSource,
+          transferGroup: tg,
+        });
+      } else if (discount > 0) {
+        // Received more than sent — extra shows up as income on the
+        // recipient account.
+        addTransaction({
+          type: 'income',
+          date,
+          merchant: `Diskon Transfer ${fromLabel} → ${toLabel}`,
+          amount: discount,
+          category: 'diskon',
+          incomeCategory: 'lainnya_in',
+          who: 'rumah',
+          source: toSource,
+          transferGroup: tg,
+        });
+      }
       navigation.popToTop();
       return;
     }
@@ -689,6 +773,8 @@ export default function AddTransactionScreen() {
                 <TextInput
                   value={it.description}
                   onChangeText={(t) => updateItem(idx, { description: t })}
+                  onFocus={() => setFocusedItemIdx(idx)}
+                  onBlur={() => setFocusedItemIdx((cur) => (cur === idx ? null : cur))}
                   placeholder="Nama item"
                   placeholderTextColor={colors.textMuted}
                   style={styles.itemDescInput}
@@ -697,6 +783,31 @@ export default function AddTransactionScreen() {
                   <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
+              {/* Autosuggest strip — shows past item descriptions matching
+               *  what the user typed. Tap to fill; category + who follow so
+               *  a returning item lands with its usual routing. */}
+              {focusedItemIdx === idx && itemSuggestionsFor(it.description).length > 0 ? (
+                <View style={styles.itemSuggestRow}>
+                  {itemSuggestionsFor(it.description).map((s) => (
+                    <TouchableOpacity
+                      key={s.description}
+                      onPress={() =>
+                        updateItem(idx, {
+                          description: s.description,
+                          category: s.category,
+                          who: s.who,
+                        })
+                      }
+                      style={styles.itemSuggestChip}
+                    >
+                      <Ionicons name="time-outline" size={11} color={colors.primary} />
+                      <Text style={styles.itemSuggestText} numberOfLines={1}>
+                        {s.description}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
               {/* Row 2: amount input takes the full width of the card. */}
               <View style={[styles.itemAmountBox, styles.itemAmountFull]}>
                 <Text style={styles.itemRp}>Rp</Text>
@@ -1139,6 +1250,18 @@ const styles = StyleSheet.create({
   },
   itemTopRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   itemDescInput: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '600', paddingVertical: 2 },
+  itemSuggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  itemSuggestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    maxWidth: '100%',
+  },
+  itemSuggestText: { fontSize: 12, fontWeight: '600', color: colors.primaryDark, flexShrink: 1 },
   itemBottomRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   itemAmountBox: {
     flexDirection: 'row',
