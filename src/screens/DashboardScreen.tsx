@@ -64,12 +64,18 @@ export default function DashboardScreen() {
       ),
     [byCatAll, disabledBudgets]
   );
-  const spent = byCat.reduce((s, c) => s + c.spent, 0);
+  // "Pengeluaran bulan ini" is the TRUE total real spending — includes
+  // Penyesuaian Saldo, Rugi Investasi, transfer fees, etc. Not restricted
+  // to Anggaran-tracked categories the way `budgetSpent` below is.
+  const spent = useMemo(() => totalSpent(monthTx, creditCard), [monthTx, creditCard]);
+  // Anggaran progress / warnings still use only budgeted categories, so
+  // reconciliation rows don't skew the "spent vs budget" bar.
+  const budgetSpent = byCat.reduce((s, c) => s + c.spent, 0);
   const totalBudget = byCat.reduce((s, c) => s + c.budget, 0);
   const byWho = useMemo(() => spendByWho(monthTx, creditCard), [monthTx, creditCard]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
-  const remaining = totalBudget - spent;
+  const remaining = totalBudget - budgetSpent;
   // Donut breakdown uses ALL real spending (every spent category, not just
   // budgeted ones) so the % math is meaningful.
   const topCats = byCatAll.filter((c) => c.spent > 0).slice(0, 5);
@@ -78,7 +84,10 @@ export default function DashboardScreen() {
     () => [...byCat].sort((a, b) => b.pct - a.pct).slice(0, 5),
     [byCat]
   );
-  const budgetPct = totalBudget > 0 ? spent / totalBudget : 0;
+  // Anggaran progress bar reads against BUDGETED spending only — a
+  // Penyesuaian on top would otherwise overflow the bar even when you
+  // haven't overspent any tracked category.
+  const budgetPct = totalBudget > 0 ? budgetSpent / totalBudget : 0;
   const filledCats = byCat.filter((c) => c.budget > 0 && c.spent > c.budget);
 
   // Grafik Saldo: real 12-month total-balance series computed from transactions.
@@ -214,9 +223,12 @@ export default function DashboardScreen() {
         {/* Category breakdown */}
         <SectionTitle>Per Kategori</SectionTitle>
         <Card>
-          {spent > 0 ? (
+          {budgetSpent > 0 ? (
             <View style={styles.breakdown}>
-              <CategoryDonut data={byCat} total={spent} centerLabel="Total" centerText={money(spent)} />
+              {/* Donut visualizes budgeted-category spending so the slices
+               *  sum to the number in the middle. Reconciliation drains
+               *  live in the top summary card, not this pie. */}
+              <CategoryDonut data={byCat} total={budgetSpent} centerLabel="Total" centerText={money(budgetSpent)} />
               <View style={styles.legend}>
                 {topCats.map((c) => {
                   const cat = categoryOf(c.category);

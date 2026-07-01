@@ -509,22 +509,14 @@ export default function TransactionsScreen() {
         //     net worth that day.
         subtotal: g.items.reduce((s, tRaw) => {
           const t = tRaw as DisplayTx;
-          // Penyesuaian Saldo and Penyesuaian Investasi are balance
-          // reconciliations — they exist to correct a saldo, not to record
-          // real spending or income. They MUST NOT change the day's net,
-          // whether they're standalone rows or aggregated daily groups.
-          const isReconciliation =
-            t.category === 'penyesuaian_saldo' ||
-            t.category === 'rugi_investasi' ||
-            t.incomeCategory === 'penyesuaian_saldo_in' ||
-            t.incomeCategory === 'investasi';
-          if (isReconciliation) return s;
           if (t.transferSummary || t.componentIds) {
             if (activeItemType) {
               const sum = matchingItems(t).reduce((a, it) => a + it.amount, 0);
               return s + (activeItemType === 'income' ? sum : -sum);
             }
             if (t.transferSummary) {
+              // Transfer aggregate contributes only the fee (−) / discount
+              // (+) legs — the moved pair cancels to zero for day-net.
               const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
               let net = 0;
               for (const l of legs) {
@@ -533,9 +525,9 @@ export default function TransactionsScreen() {
               }
               return s + net;
             }
-            // A daily group that survived the reconciliation check above
-            // isn't Penyesuaian — nothing to sum here beyond regular legs
-            // (kept for future group kinds).
+            // Daily-group Penyesuaian (Saldo or Investasi) — signed net of
+            // every underlying leg. These DO move the day's tally: a
+            // Penyesuaian is a real change in what the account contains.
             const legs = monthTx.filter((l) => t.componentIds?.includes(l.id));
             const net = legs.reduce(
               (a, l) => a + (l.type === 'income' ? l.amount : -l.amount),
@@ -544,9 +536,11 @@ export default function TransactionsScreen() {
             return s + net;
           }
           // Regular row. Reimbursed rows and pending CC purchases are
-          // invisible to the day's net — the reimbursed money already came
-          // back, and a pending CC purchase doesn't hit the balance until
-          // its due date or Bayar Tagihan.
+          // invisible to the day's net — reimbursed money already came
+          // back, and a pending CC purchase doesn't hit balances until
+          // its due date or Bayar Tagihan. Everything else (including
+          // standalone Penyesuaian Saldo / Rugi / Untung Investasi rows)
+          // contributes normally.
           if (t.reimbursed) return s;
           if (t.type !== 'income' && isCcPending(t, creditCard)) return s;
           return s + (t.type === 'income' ? t.amount : -rowAmount(t));

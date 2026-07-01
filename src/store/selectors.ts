@@ -40,18 +40,19 @@ export function isCcPending(t: Transaction, cc?: CreditCardConfig): boolean {
 // Reimbursed rows also drop out of spending totals: once the money came back
 // the expense effectively neutralized itself. Reimbursable-but-not-yet-
 // reimbursed still counts (the money is out until the payback arrives).
+//
+// Penyesuaian Saldo / Investasi (both expense and income variants) DO count —
+// they represent real changes to net worth that period (fees, interest,
+// investment P&L) and need to show up in "Pengeluaran bulan ini" on the
+// Dashboard and the day-net on Transaksi.
 const countsAsSpending = (t: Transaction, cc?: CreditCardConfig) =>
   isExpense(t) &&
   !t.reimbursed &&
   !isCcPending(t, cc) &&
-  t.category !== 'penyesuaian_saldo' &&
-  t.category !== 'transfer_out' &&
-  t.category !== 'rugi_investasi';
+  t.category !== 'transfer_out';
 const countsAsIncome = (t: Transaction) =>
   isIncome(t) &&
-  t.incomeCategory !== 'penyesuaian_saldo_in' &&
-  t.incomeCategory !== 'transfer_in' &&
-  t.incomeCategory !== 'investasi';
+  t.incomeCategory !== 'transfer_in';
 
 /** Total expenses (income, reimbursed, and pending CC purchases ignored). */
 export function totalSpent(
