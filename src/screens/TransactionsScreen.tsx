@@ -96,8 +96,21 @@ export default function TransactionsScreen() {
     }
     // 2) Extra filters from the filter sheet.
     const q = nameQuery.trim().toLowerCase();
-    if (q) list = list.filter((t) => (t.merchant || '').toLowerCase().includes(q));
-    if (whoFilter !== 'all') list = list.filter((t) => t.who === whoFilter);
+    if (q) {
+      list = list.filter((t) => {
+        if ((t.merchant || '').toLowerCase().includes(q)) return true;
+        // Also match individual item descriptions inside a multi-item tx so
+        // "somethinc" finds it even when it's a line in a bigger receipt.
+        return t.items?.some((it) => (it.description || '').toLowerCase().includes(q)) ?? false;
+      });
+    }
+    if (whoFilter !== 'all') {
+      list = list.filter(
+        (t) =>
+          t.who === whoFilter ||
+          (t.items?.some((it) => it.who === whoFilter) ?? false)
+      );
+    }
     if (sourceFilter !== 'all') list = list.filter((t) => t.source === sourceFilter);
     return list;
   }, [monthTx, mode, catFilter, incFilter, nameQuery, whoFilter, sourceFilter]);
@@ -426,16 +439,26 @@ function FilterSheet({
             <Text style={styles.fsLabel}>Sumber Dana</Text>
             <View style={styles.fsChipRow}>
               <FsChip label="Semua" active={source === 'all'} onPress={() => setSource('all')} />
-              {SOURCES.map((s) => (
-                <FsChip
-                  key={s.id}
-                  label={`${whoOf(s.owner).emoji} ${s.label}`}
-                  color={s.color}
-                  sourceIcon={s.icon}
-                  active={source === s.id}
-                  onPress={() => setSource(s.id)}
-                />
-              ))}
+              {SOURCES.map((s) => {
+                // Only disambiguate labels that would otherwise collide across
+                // owners (ShopeePay, GoPay, Tunai). BCA, Bibit, etc. are
+                // unique so we skip the "· Rosi/Rizal" suffix.
+                const dup =
+                  SOURCES.filter((o) => o.label === s.label).length > 1;
+                const label = dup
+                  ? `${s.label} · ${whoOf(s.owner).label}`
+                  : s.label;
+                return (
+                  <FsChip
+                    key={s.id}
+                    label={label}
+                    color={s.color}
+                    sourceIcon={s.icon}
+                    active={source === s.id}
+                    onPress={() => setSource(s.id)}
+                  />
+                );
+              })}
             </View>
 
             <View style={styles.fsButtons}>
@@ -596,8 +619,9 @@ function TxRow({
             {tx.image ? <Ionicons name="image" size={12} color={colors.textMuted} /> : null}
           </View>
         </View>
-        {/* Dedicated chevron tap target — toggles expand without triggering
-         *  edit. Sits at the right edge so it doesn't compete with the body. */}
+        {/* Dedicated toggle target — expands/collapses without triggering
+         *  edit. + when collapsed, − when expanded to signal "reveal / hide
+         *  the child items" better than a chevron. */}
         {isItemized ? (
           <TouchableOpacity
             onPress={onToggleExpand}
@@ -605,9 +629,9 @@ function TxRow({
             style={styles.chevBtn}
           >
             <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textMuted}
+              name={expanded ? 'remove' : 'add'}
+              size={22}
+              color={colors.primary}
             />
           </TouchableOpacity>
         ) : null}
@@ -733,7 +757,14 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
   },
   fsTitle: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: spacing.sm },
-  fsLabel: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginTop: spacing.md },
+  // Matches add-transaction form's label style so the two look consistent.
+  fsLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+    marginBottom: 6,
+  },
   fsInput: {
     backgroundColor: colors.bg,
     borderWidth: 1,
@@ -757,10 +788,13 @@ const styles = StyleSheet.create({
   fsChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingLeft: 6,
-    paddingRight: 12,
+    // Symmetric padding so chips without an icon (like "Semua") stay centered.
+    // The icon-circle style pulls itself in visually via its own width.
+    paddingHorizontal: 12,
     paddingVertical: 5,
+    minHeight: 32,
     borderRadius: radius.pill,
     borderWidth: 1,
   },
@@ -770,6 +804,9 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+    // Nudge the icon slightly leftward so the chip visually looks balanced
+    // when both icon and text are present.
+    marginLeft: -4,
   },
   fsChipText: { fontSize: 13, fontWeight: '600', color: colors.text },
   fsButtons: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },

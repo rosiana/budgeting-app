@@ -219,18 +219,48 @@ export default function AddTransactionScreen() {
       const tg = uid();
       const fromLabel = sourceOf(fromSource).label;
       const toLabel = sourceOf(toSource).label;
-      // Money out of source account (transfer leg, ignored from spending).
-      addTransaction({
-        type: 'expense',
-        date,
-        merchant: `Transfer ke ${toLabel}`,
-        amount: amountInValue,
-        category: 'transfer_out',
-        who: 'rumah',
-        source: fromSource,
-        transferGroup: tg,
-      });
-      // Money into the destination account (ignored from income).
+      // Outgoing side. If there's a fee, store it as a multi-item transaction
+      // so the row renders as an accordion: main "Transfer" leg + a Biaya /
+      // Pajak Transaksi item. When fee = 0 we skip items entirely so it stays
+      // a single-row transaction (no redundant single-item accordion).
+      addTransaction(
+        transferFee > 0
+          ? {
+              type: 'expense',
+              date,
+              merchant: `Transfer ke ${toLabel}`,
+              amount: amountOutValue,
+              category: 'transfer_out',
+              who: 'rumah',
+              source: fromSource,
+              transferGroup: tg,
+              items: [
+                {
+                  description: `Transfer ke ${toLabel}`,
+                  amount: amountInValue,
+                  category: 'transfer_out',
+                  who: 'rumah',
+                },
+                {
+                  description: 'Biaya / Pajak Transaksi',
+                  amount: transferFee,
+                  category: 'biaya_pajak',
+                  who: 'rumah',
+                },
+              ],
+            }
+          : {
+              type: 'expense',
+              date,
+              merchant: `Transfer ke ${toLabel}`,
+              amount: amountInValue,
+              category: 'transfer_out',
+              who: 'rumah',
+              source: fromSource,
+              transferGroup: tg,
+            }
+      );
+      // Money into the destination account (ignored from income totals).
       addTransaction({
         type: 'income',
         date,
@@ -242,19 +272,6 @@ export default function AddTransactionScreen() {
         source: toSource,
         transferGroup: tg,
       });
-      // The fee is real spending; counts in budgets/totals.
-      if (transferFee > 0) {
-        addTransaction({
-          type: 'expense',
-          date,
-          merchant: `${fromLabel} → ${toLabel}`,
-          amount: transferFee,
-          category: 'biaya_pajak',
-          who: 'rumah',
-          source: fromSource,
-          transferGroup: tg,
-        });
-      }
       navigation.popToTop();
       return;
     }
@@ -564,25 +581,6 @@ export default function AddTransactionScreen() {
           </Modal>
         ) : null}
 
-        {/* Who */}
-        <Text style={styles.label}>Untuk Siapa</Text>
-        <View style={styles.chipWrap}>
-          {WHO.map((w) => {
-            const active = who === w.id;
-            return (
-              <TouchableOpacity
-                key={w.id}
-                activeOpacity={0.8}
-                onPress={() => setWho(w.id)}
-                style={[styles.chip, { borderColor: active ? w.color : colors.border, backgroundColor: active ? w.color + '18' : colors.card }]}
-              >
-                <View style={[styles.chipDot, { backgroundColor: w.color }]} />
-                <Text style={[styles.chipText, active && { color: w.color }]}>{w.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {/* Source */}
         <Text style={styles.label}>Sumber Dana</Text>
         <View style={styles.chipWrap}>
@@ -602,9 +600,29 @@ export default function AddTransactionScreen() {
           })}
         </View>
 
-        {/* Category — hidden when itemized (each item carries its own) */}
+        {/* Income keeps Untuk Siapa + Kategori always visible (no itemize
+         *  concept for income). Expense hides both once itemized because each
+         *  item then carries its own who + category. */}
         {isIncome ? (
           <>
+            <Text style={styles.label}>Untuk Siapa</Text>
+            <View style={styles.chipWrap}>
+              {WHO.map((w) => {
+                const active = who === w.id;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    activeOpacity={0.8}
+                    onPress={() => setWho(w.id)}
+                    style={[styles.chip, { borderColor: active ? w.color : colors.border, backgroundColor: active ? w.color + '18' : colors.card }]}
+                  >
+                    <View style={[styles.chipDot, { backgroundColor: w.color }]} />
+                    <Text style={[styles.chipText, active && { color: w.color }]}>{w.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <Text style={styles.label}>Kategori</Text>
             <View style={styles.chipWrap}>
               {PICKABLE_INCOME_CATEGORIES.map((id) => {
@@ -624,36 +642,7 @@ export default function AddTransactionScreen() {
               })}
             </View>
           </>
-        ) : itemized ? (
-          <>
-            <Text style={styles.label}>Kategori</Text>
-            <View style={styles.catNote}>
-              <Ionicons name="pricetags" size={15} color={colors.primary} />
-              <Text style={styles.catNoteText}>Diatur per item di bawah.</Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.label}>Kategori</Text>
-            <View style={styles.chipWrap}>
-              {PICKABLE_CATEGORIES.map((id) => {
-                const c = CATEGORY_MAP[id];
-                const active = category === id;
-                return (
-                  <TouchableOpacity
-                    key={id}
-                    activeOpacity={0.8}
-                    onPress={() => setCategory(id)}
-                    style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-                  >
-                    <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
-                    <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
+        ) : null}
 
         {/* Credit-card flag (expense only) */}
         {!isIncome ? (
@@ -695,7 +684,10 @@ export default function AddTransactionScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Per-item breakdown (expense only) */}
+        {/* Per-item breakdown (expense only). The Pecah button sits ABOVE the
+         *  generic Untuk Siapa + Kategori so the visual flow is: "here's the
+         *  main info, tap Pecah to itemize — and once you do, these two fields
+         *  disappear because each item carries its own." */}
         {!isIncome && !itemized ? (
           <TouchableOpacity onPress={startItemizing} style={styles.splitBtn} activeOpacity={0.8}>
             <Ionicons name="git-branch-outline" size={20} color={colors.primary} />
@@ -708,6 +700,49 @@ export default function AddTransactionScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
+        ) : null}
+
+        {/* Generic Untuk Siapa + Kategori for a non-itemized expense. Hidden
+         *  automatically once the user taps Pecah (itemized=true). */}
+        {!isIncome && !itemized ? (
+          <>
+            <Text style={styles.label}>Untuk Siapa</Text>
+            <View style={styles.chipWrap}>
+              {WHO.map((w) => {
+                const active = who === w.id;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    activeOpacity={0.8}
+                    onPress={() => setWho(w.id)}
+                    style={[styles.chip, { borderColor: active ? w.color : colors.border, backgroundColor: active ? w.color + '18' : colors.card }]}
+                  >
+                    <View style={[styles.chipDot, { backgroundColor: w.color }]} />
+                    <Text style={[styles.chipText, active && { color: w.color }]}>{w.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.label}>Kategori</Text>
+            <View style={styles.chipWrap}>
+              {PICKABLE_CATEGORIES.map((id) => {
+                const c = CATEGORY_MAP[id];
+                const active = category === id;
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    activeOpacity={0.8}
+                    onPress={() => setCategory(id)}
+                    style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                  >
+                    <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
+                    <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         ) : null}
 
         {!isIncome && itemized ? (
@@ -724,6 +759,7 @@ export default function AddTransactionScreen() {
           const itemWho = whoOf(it.who);
           return (
             <View key={it.id} style={styles.itemCard}>
+              {/* Row 1: description spans the full width, delete X on the right. */}
               <View style={styles.itemTopRow}>
                 <TextInput
                   value={it.description}
@@ -736,18 +772,29 @@ export default function AddTransactionScreen() {
                   <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              <View style={styles.itemBottomRow}>
-                <View style={styles.itemAmountBox}>
-                  <Text style={styles.itemRp}>Rp</Text>
-                  <TextInput
-                    value={it.amount}
-                    onChangeText={(t) => updateItem(idx, { amount: formatAmountInput(t) })}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.itemAmountInput}
-                  />
-                </View>
+              {/* Row 2: amount input takes the full width of the card. */}
+              <View style={[styles.itemAmountBox, styles.itemAmountFull]}>
+                <Text style={styles.itemRp}>Rp</Text>
+                <TextInput
+                  value={it.amount}
+                  onChangeText={(t) => updateItem(idx, { amount: formatAmountInput(t) })}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.itemAmountInput}
+                />
+              </View>
+              {/* Row 3: Untuk Siapa + Kategori pickers side-by-side. */}
+              <View style={styles.itemChipsRow}>
+                <TouchableOpacity
+                  onPress={() => setWhoPickerFor(idx)}
+                  activeOpacity={0.8}
+                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
+                >
+                  <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
+                    {itemWho.emoji} {itemWho.label}
+                  </Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setPickerFor(idx)}
                   activeOpacity={0.8}
@@ -756,15 +803,6 @@ export default function AddTransactionScreen() {
                   <CatIcon name={cat.icon} set={cat.iconSet} size={14} color={cat.color} />
                   <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
                     {cat.label}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setWhoPickerFor(idx)}
-                  activeOpacity={0.8}
-                  style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.card }]}
-                >
-                  <Text style={[styles.chipText, { color: colors.text }]} numberOfLines={1}>
-                    {itemWho.emoji} {itemWho.label}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1119,6 +1157,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     flex: 1,
   },
+  // Full-width variant used when amount lives on its own row in the item card.
+  itemAmountFull: { flex: undefined, alignSelf: 'stretch', marginTop: spacing.sm },
+  itemChipsRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   itemRp: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
   itemAmountInput: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text, paddingVertical: 8, marginLeft: 4 },
   itemsSum: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
