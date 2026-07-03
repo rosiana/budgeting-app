@@ -31,24 +31,22 @@ Snapshot of the tech surface:
 
 ---
 
-## 2. Transfer the code
+## 2. Get the code
 
-The repo currently has **no `origin` remote**. Push it somewhere the new
-account can clone from:
+The repo is public at **https://github.com/rosiana/budgeting-app**:
 
 ```bash
-# On the source machine
-cd /Users/annisaurrosilutfiana/budgeting-app
-git remote add origin git@github.com:<new-owner>/momoney.git
-git push -u origin main
+git clone https://github.com/rosiana/budgeting-app.git
+cd budgeting-app
+npm install
 ```
 
-Then on the new machine:
+To take over as the primary maintainer, fork it on GitHub (or push a fresh
+copy to your own account) and update the `origin` remote:
 
 ```bash
-git clone git@github.com:<new-owner>/momoney.git
-cd momoney
-npm install
+git remote set-url origin git@github.com:<your-account>/budgeting-app.git
+git push -u origin main
 ```
 
 ---

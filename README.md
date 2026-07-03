@@ -1,11 +1,108 @@
 # MoMoney
 
-A cross-platform (iOS + Android) personal budgeting app for **Rizal & Rosi**,
-built with **Expo / React Native + TypeScript**. The UI is in **Bahasa
-Indonesia** and all amounts are in **Rupiah (IDR)**. Snap a photo of a receipt
-and it reads the merchant, date, total, and line items **entirely on-device**
-using ML Kit / Apple Vision text recognition — no servers, no API keys, nothing
-leaves your phone. The data model mirrors the couple's cashflow spreadsheet.
+A cross-platform (iOS + Android) personal budgeting app built with **Expo /
+React Native + TypeScript**. The UI is in **Bahasa Indonesia** and all amounts
+are in **Rupiah (IDR)**. Snap a photo of a receipt and it reads the merchant,
+date, total, and line items **entirely on-device** using ML Kit / Apple Vision
+text recognition — no servers, no API keys, nothing leaves your phone.
+
+Originally built for a couple (Rosi on iOS, Rizal on Android), but the who /
+category / source lists in [`src/theme.ts`](src/theme.ts) are just data — swap
+the names, colors, and accounts for your own household in a few minutes. See
+[Personalize](#personalize) below.
+
+## Get started
+
+```bash
+git clone https://github.com/rosiana/budgeting-app.git
+cd budgeting-app
+npm install
+```
+
+Then, on a Mac with Xcode installed:
+
+```bash
+npm run ios       # iOS Simulator, or a connected iPhone
+```
+
+Or, with Android Studio + an emulator/USB device:
+
+```bash
+npm run android
+```
+
+The first run takes a few minutes — it prebuilds the native iOS/Android project
+and installs the app as a dev client. After that, iterate with fast refresh via
+`npm start`.
+
+> ⚠️ **This app will NOT run in Expo Go.** The on-device OCR module
+> (`@react-native-ml-kit/text-recognition`) is a native module Expo Go doesn't
+> include. You have to build the dev client once, which is what `npm run ios`
+> / `npm run android` does. Everything else works the normal way after that.
+
+### iOS on a real device with a free Apple ID
+
+The included [`plugins/withNoPushEntitlement.js`](plugins/withNoPushEntitlement.js)
+config plugin strips `aps-environment` so a **free Apple ID** can sign the
+build (paid Apple Developer Program is not required).
+
+First run on the phone:
+1. Xcode → Settings → Accounts → add your Apple ID. `npm run ios` will pick it
+   up as the signing team.
+2. When the app launches, iOS shows **Untrusted Developer** → Settings →
+   General → **VPN & Device Management** → tap your Apple ID → **Trust**.
+3. Settings → Privacy & Security → **Developer Mode** → **On** (iOS 17+).
+
+Free provisioning profiles **expire after 7 days**. When the app icon greys
+out or "Unable to Install" appears, just re-run:
+
+```bash
+cd ios
+xcodebuild -workspace MoMoney.xcworkspace -scheme MoMoney -configuration Release \
+  -destination 'generic/platform=iOS' -allowProvisioningUpdates -quiet build && \
+APP=$(ls -dt ~/Library/Developer/Xcode/DerivedData/MoMoney-*/Build/Products/Release-iphoneos/MoMoney.app | head -1) && \
+xcrun devicectl device install app --device <YOUR_UDID> "$APP"
+```
+
+Your data is safe across reinstalls (stored locally and, if configured, in
+your Google Sheet).
+
+If you'd rather not deal with the 7-day renewal, upgrade to the paid Apple
+Developer Program ($99/year) — certificates then last 1 year and you can drop
+the `withNoPushEntitlement` plugin.
+
+### Android APK without Android Studio
+
+If you don't want to install Android Studio, the included
+[`eas.json`](eas.json) has a `preview` profile that builds an installable APK
+on Expo's cloud:
+
+```bash
+npx eas-cli login                     # first time only
+npx eas-cli build --platform android --profile preview
+```
+
+Download the resulting `.apk` from the URL printed to the terminal, sideload
+onto the phone (Files → Install), and allow install-from-browser once.
+
+## Personalize
+
+The app ships with the original couple's names, categories, and accounts.
+Everything is one file to edit:
+
+- **Who (Rosi / Rizal / Nonik / Rumah / Lainnya)** — [`src/theme.ts`](src/theme.ts)
+  `WHO` array. Swap the labels, colors, and emoji.
+- **Sources (BCA / SeaBank / GoPay / Bibit / …)** — same file, `SOURCES` array.
+  Each source has an `owner` (rosi/rizal) so the app knows which person's
+  wallet it lives in.
+- **Categories** — `CATEGORIES` and `PICKABLE_CATEGORIES` in the same file.
+- **Default budgets & opening balances** — [`src/store/seed.ts`](src/store/seed.ts).
+- **Which person defaults on which OS** — the app defaults iOS → Rosi and
+  Android → Rizal; `DEVICE_PERSON` in `src/theme.ts` handles the split.
+
+If you rename a category or source id (e.g. `bca` → `mandiri`), also add an
+entry to `CATEGORY_MIGRATION` / `migrateSource` in `src/theme.ts` so existing
+saved data survives the rename.
 
 ## Features
 
@@ -61,11 +158,14 @@ editable on the **Saldo** tab.
 
 ### Categories (Kategori)
 
-Cicilan Rumah · Listrik · Air · Internet · Skincare · Makan & Minum · Langganan ·
-ART · Sekolah · Fun · Kebutuhan Rumah · Lainnya
+KPR · Utilitas · Transportasi · Personal Care · Makan & Minum · Langganan ·
+ART · Sekolah · Hobi & Hiburan · Kebutuhan Rumah · Perabot & Peralatan ·
+Fashion · Rokok & Alkohol · Sedekah & Hadiah · Kesehatan · Investasi Luar ·
+Lainnya
 
-> Adapted from the spreadsheet: removed *Car Instalment*, renamed *Apartment Rent*
-> → *Cicilan Rumah*, and added *ART*, *Sekolah*, *Fun*, and *Kebutuhan Rumah*.
+Plus a set of **system categories** that appear only when generated by the
+app: Biaya / Pajak Transaksi, Diskon, Rugi Investasi, Penyesuaian Saldo,
+Transfer.
 
 ## Tech stack
 
@@ -137,35 +237,7 @@ secret token.
 new phone or to restore a backup. (Sync direction is app → Sheet; pulling is a
 full replace, not a merge.)
 
-## Running the app
-
-> ⚠️ **A development build is required — this app will not run in Expo Go.**
-> The on-device OCR module (`@react-native-ml-kit/text-recognition`) is a native
-> module that Expo Go does not include. You build a custom dev client once, then
-> iterate with fast refresh as usual.
-
-### Prerequisites
-- Node 18+
-- **iOS:** macOS with Xcode + CocoaPods
-- **Android:** Android Studio + an emulator or a device with USB debugging
-
-### First run (builds the native dev client)
-
-```bash
-npm install
-
-# iOS (simulator or connected device)
-npm run ios
-
-# Android (emulator or connected device)
-npm run android
-```
-
-`npm run ios` / `npm run android` run `expo run:*`, which executes
-`expo prebuild` to generate the native projects and then builds and launches the
-dev client. After that first build, you can just run `npm start` and reload.
-
-### Type-check
+## Type-check
 
 ```bash
 npm run typecheck
@@ -193,12 +265,15 @@ npm run typecheck
 
 The parser is deliberately forgiving — OCR is noisy — and everything is editable.
 
-## Notes & next steps
+## Deeper docs
+
+- [HANDOFF.md](HANDOFF.md) — full walkthrough for taking over the project:
+  secrets checklist, first-run signing quirks, moving to a new Google Sheet,
+  where to change common things, known quirks.
+
+## Notes
 
 - **New Architecture:** the ML Kit module isn't formally listed as new-arch
   tested in the RN directory; it works through the interop layer in practice.
   If you hit issues, set `"newArchEnabled": false` via an
   `expo-build-properties` plugin config.
-- Possible follow-ups: native date picker, recurring expenses, transfers between
-  accounts, CSV/spreadsheet export back to the cashflow format, and cloud
-  sync/accounts.
