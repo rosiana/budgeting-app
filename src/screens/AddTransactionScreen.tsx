@@ -376,11 +376,113 @@ export default function AddTransactionScreen() {
     navigation.popToTop();
   };
 
+  // Linked refunds — used to warn on delete and to seed the Refund modal's
+  // "already refunded" hint.
+  const linkedRefunds = useMemo(
+    () =>
+      draft?.id
+        ? transactions.filter((t) => t.refundOf === draft.id && t.type === 'income' && t.incomeCategory === 'refund')
+        : [],
+    [transactions, draft?.id]
+  );
+  const alreadyRefunded = linkedRefunds.reduce((s, r) => s + r.amount, 0);
+
   const onDelete = () => {
-    if (draft?.id) {
-      deleteTransaction(draft.id);
+    if (!draft?.id) return;
+    const id = draft.id;
+    const doDelete = () => {
+      deleteTransaction(id);
       navigation.popToTop();
+    };
+    if (linkedRefunds.length) {
+      Alert.alert(
+        'Ada refund terhubung',
+        `Transaksi ini punya ${linkedRefunds.length} refund. Hapus juga?`,
+        [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Hapus keduanya',
+            style: 'destructive',
+            onPress: () => {
+              linkedRefunds.forEach((r) => deleteTransaction(r.id));
+              doDelete();
+            },
+          },
+        ]
+      );
+      return;
     }
+    doDelete();
+  };
+
+  // --- Refund modal state ---------------------------------------------------
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundDate, setRefundDate] = useState(todayISO());
+  const [refundSource, setRefundSource] = useState<SourceId>(source);
+  const [refundAmountInput, setRefundAmountInput] = useState('');
+  const [refundItemSel, setRefundItemSel] = useState<Record<string, boolean>>({});
+  const [refundShowDate, setRefundShowDate] = useState(false);
+  const draftItems = draft?.items ?? [];
+  const hasDraftItems = draftItems.length > 0;
+
+  // Amount auto-derives from selected items when the original is multi-item.
+  const refundAmountValue = useMemo(() => {
+    if (hasDraftItems) {
+      const anySelected = draftItems.some((_, i) => refundItemSel[String(i)]);
+      if (anySelected) {
+        return draftItems.reduce(
+          (s, it, i) => s + (refundItemSel[String(i)] ? it.amount : 0),
+          0
+        );
+      }
+    }
+    return parseAmountInput(refundAmountInput);
+  }, [hasDraftItems, draftItems, refundItemSel, refundAmountInput]);
+
+  const openRefundModal = () => {
+    if (!draft?.id) return;
+    setRefundDate(todayISO());
+    setRefundSource(draft.source ?? source);
+    setRefundAmountInput(
+      draft.amount != null
+        ? formatAmountInput(String(Math.round(Math.max(0, draft.amount - alreadyRefunded))))
+        : ''
+    );
+    setRefundItemSel({});
+    setRefundOpen(true);
+  };
+
+  const confirmRefund = () => {
+    if (!draft?.id || refundAmountValue <= 0) return;
+    // If a multi-item picker was used, mirror the selected items on the
+    // refund so category math credits the right buckets.
+    const selectedItems: LineItem[] = hasDraftItems
+      ? draftItems
+          .filter((_, i) => refundItemSel[String(i)])
+          .map((it) => ({
+            description: it.description,
+            amount: it.amount,
+            category: it.category,
+            who: it.who ?? draft.who ?? DEFAULT_WHO,
+          }))
+      : [];
+
+    const refund = {
+      type: 'income' as TxType,
+      date: refundDate,
+      merchant: `Refund ${draft.merchant ?? ''}`.trim(),
+      amount: Math.round(refundAmountValue),
+      category: draft.category ?? 'lainnya',
+      incomeCategory: 'refund' as const,
+      who: draft.who ?? DEFAULT_WHO,
+      source: refundSource,
+      creditCard: draft.creditCard || undefined,
+      refundOf: draft.id,
+      items: selectedItems.length ? selectedItems : undefined,
+    };
+    addTransaction(refund);
+    setRefundOpen(false);
+    navigation.popToTop();
   };
 
   return (
@@ -397,7 +499,7 @@ export default function AddTransactionScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
       >
         {draft?.scanned ? (
@@ -895,20 +997,42 @@ export default function AddTransactionScreen() {
         )}
 
         <View style={{ height: spacing.lg }} />
+      </ScrollView>
+
+      {/* Sticky action bar — pinned to the bottom of the screen so Simpan +
+       *  Hapus stay reachable on long forms without scrolling to the end. */}
+      <View style={[styles.stickyActions, { paddingBottom: insets.bottom + spacing.md }]}>
         <PrimaryButton
           label={isEdit ? 'Simpan Perubahan' : 'Simpan Transaksi'}
           icon="checkmark"
           onPress={onSave}
           disabled={!canSave}
         />
-
-        {isEdit ? (
+        {isEdit && draft?.type !== 'income' && draft?.type !== 'transfer' ? (
+          <View style={styles.editActionsRow}>
+            <TouchableOpacity
+              onPress={openRefundModal}
+              style={styles.refundBtn}
+              disabled={!draft?.amount || alreadyRefunded >= (draft.amount ?? 0)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-undo" size={16} color={colors.success} />
+              <Text style={styles.refundText}>
+                Refund{alreadyRefunded > 0 ? ' lagi' : ''}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDelete} style={styles.deleteBtn}>
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              <Text style={styles.deleteText}>Hapus transaksi</Text>
+            </TouchableOpacity>
+          </View>
+        ) : isEdit ? (
           <TouchableOpacity onPress={onDelete} style={styles.deleteBtn}>
             <Ionicons name="trash-outline" size={18} color={colors.danger} />
             <Text style={styles.deleteText}>Hapus transaksi</Text>
           </TouchableOpacity>
         ) : null}
-      </ScrollView>
+      </View>
 
       {/* Date picker — mounted at the screen root so ALL type tabs (Expense,
        *  Income, Transfer) can trigger it. Previously nested inside the
@@ -1007,6 +1131,167 @@ export default function AddTransactionScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Refund modal — opens from the sticky action bar on an existing
+       *  expense. When the original is multi-item you can pick which items
+       *  to refund; the amount then auto-derives from the selection. Date +
+       *  source default to today + the original's source, both editable. */}
+      <Modal visible={refundOpen} transparent animationType="fade" onRequestClose={() => setRefundOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalWrap}>
+          <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setRefundOpen(false)} />
+          <View style={[styles.refundSheet, { paddingBottom: insets.bottom + spacing.xl }]}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={styles.sheetTitle}>Refund transaksi</Text>
+              {alreadyRefunded > 0 ? (
+                <Text style={styles.sheetSub}>
+                  Sudah direfund {money(alreadyRefunded)} dari total {money(draft?.amount ?? 0)}.
+                </Text>
+              ) : null}
+
+              {hasDraftItems ? (
+                <>
+                  <Text style={styles.label}>Pilih item</Text>
+                  <Text style={styles.itemsHint}>
+                    Centang item yang direfund. Kosongkan semua kalau mau input
+                    nominal manual di bawah.
+                  </Text>
+                  {draftItems.map((it, i) => {
+                    const cat = categoryOf(it.category);
+                    const key = String(i);
+                    const active = !!refundItemSel[key];
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setRefundItemSel((m) => ({ ...m, [key]: !m[key] }))}
+                        activeOpacity={0.7}
+                        style={[styles.refundItemRow, active && styles.refundItemRowOn]}
+                      >
+                        <View
+                          style={[
+                            styles.refundCheckbox,
+                            active && { backgroundColor: colors.success, borderColor: colors.success },
+                          ]}
+                        >
+                          {active ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                        </View>
+                        <CatIcon name={cat.icon} set={cat.iconSet} size={16} color={cat.color} />
+                        <Text style={styles.refundItemDesc} numberOfLines={1}>{it.description}</Text>
+                        <Text style={styles.refundItemAmt}>{money(it.amount)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              <Text style={styles.label}>Jumlah refund</Text>
+              <View style={styles.amountRow}>
+                <Text style={styles.currency}>Rp</Text>
+                <TextInput
+                  value={
+                    hasDraftItems && draftItems.some((_, i) => refundItemSel[String(i)])
+                      ? formatAmountInput(String(Math.round(refundAmountValue)))
+                      : refundAmountInput
+                  }
+                  onChangeText={(t) => {
+                    // Typing overrides the item selection: clear item picks.
+                    setRefundItemSel({});
+                    setRefundAmountInput(formatAmountInput(t));
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.amountInput}
+                />
+              </View>
+
+              <Text style={styles.label}>Tanggal refund diterima</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setRefundShowDate(true)}
+                style={[styles.input, styles.dateField]}
+              >
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                <Text style={styles.dateText}>{formatDateLong(refundDate)}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <Text style={styles.label}>Uangnya masuk ke</Text>
+              <View style={styles.chipWrap}>
+                {sourcesForPerson(sourceOf(refundSource).owner).map((s) => {
+                  const active = refundSource === s.id;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      activeOpacity={0.8}
+                      onPress={() => setRefundSource(s.id)}
+                      style={[
+                        styles.chip,
+                        {
+                          borderColor: active ? s.color : colors.border,
+                          backgroundColor: active ? s.color + '18' : colors.card,
+                        },
+                      ]}
+                    >
+                      <Ionicons name={s.icon as any} size={14} color={s.color} />
+                      <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {draft?.creditCard ? (
+                <Text style={styles.autoHint}>
+                  Refund kartu kredit — akan otomatis mengurangi tagihan yang
+                  jatuh temponya sesuai tanggal refund.
+                </Text>
+              ) : null}
+
+              <View style={{ height: spacing.md }} />
+              <PrimaryButton
+                label="Konfirmasi Refund"
+                icon="arrow-undo"
+                onPress={confirmRefund}
+                disabled={refundAmountValue <= 0}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Date picker for the refund modal — separate instance so it doesn't
+       *  clash with the main form's date state. */}
+      {refundShowDate && Platform.OS === 'android' ? (
+        <DateTimePicker
+          value={new Date(`${refundDate}T00:00:00`)}
+          mode="date"
+          display="default"
+          onChange={(e, d) => {
+            setRefundShowDate(false);
+            if (e.type !== 'dismissed' && d) setRefundDate(toISODate(d));
+          }}
+        />
+      ) : null}
+      {refundShowDate && Platform.OS === 'ios' ? (
+        <Modal transparent animationType="fade" onRequestClose={() => setRefundShowDate(false)}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setRefundShowDate(false)}
+            style={styles.dateBackdrop}
+          >
+            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.dateSheet}>
+              <DateTimePicker
+                value={new Date(`${refundDate}T00:00:00`)}
+                mode="date"
+                display="inline"
+                onChange={(_, d) => {
+                  if (d) setRefundDate(toISODate(d));
+                  setRefundShowDate(false);
+                }}
+              />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -1254,7 +1539,48 @@ const styles = StyleSheet.create({
   itemRp: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
   itemAmountInput: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text, paddingVertical: 8, marginLeft: 4 },
   itemsSum: { fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: spacing.lg, padding: spacing.md },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm },
+  editActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xl, marginTop: spacing.sm },
+  refundBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: spacing.sm },
+  refundText: { color: colors.success, fontWeight: '800', fontSize: 15 },
+  refundSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    maxHeight: '85%',
+  },
+  refundItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 6,
+  },
+  refundItemRowOn: { borderColor: colors.success, backgroundColor: colors.success + '11' },
+  refundCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refundItemDesc: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
+  refundItemAmt: { fontSize: 13, fontWeight: '700', color: colors.text },
+  stickyActions: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   deleteText: { color: colors.danger, fontWeight: '700', fontSize: 15 },
   modalWrap: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...fill, backgroundColor: 'rgba(0,0,0,0.4)' },
@@ -1265,4 +1591,5 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.lg },
+  sheetSub: { fontSize: 13, color: colors.textMuted, marginTop: -spacing.md, marginBottom: spacing.md, fontWeight: '600' },
 });

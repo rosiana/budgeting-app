@@ -103,6 +103,19 @@ export default function TransactionsScreen() {
     [transactions, month]
   );
 
+  // Aggregate refunded amount per original expense id. Used by TxRow to
+  // render the "Direfund Rp X" caption on the original expense so the user
+  // sees at a glance how much of it came back. Sourced from ALL transactions
+  // (refunds can be dated in a different month than the original).
+  const refundedById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of transactions) {
+      if (t.type !== 'income' || t.incomeCategory !== 'refund' || !t.refundOf) continue;
+      map.set(t.refundOf, (map.get(t.refundOf) ?? 0) + t.amount);
+    }
+    return map;
+  }, [transactions]);
+
   // Collapse related rows into single accordions:
   //  - Transfers: the two legs (expense + income) sharing a transferGroup are
   //    merged into ONE row with items = [Ke <to>, Dari <from>, +/− Biaya/Diskon].
@@ -749,6 +762,7 @@ export default function TransactionsScreen() {
             rowAmount={rowAmount}
             matchingItems={matchingItems}
             displayType={displayType(item)}
+            refundedAmount={refundedById.get(item.id) ?? 0}
             expanded={!!expanded[item.id]}
             onToggleExpand={() => setExpanded((m) => ({ ...m, [item.id]: !m[item.id] }))}
             onEdit={openEdit}
@@ -980,6 +994,7 @@ function TxRow({
   rowAmount,
   matchingItems,
   displayType,
+  refundedAmount,
   expanded,
   onToggleExpand,
   onEdit,
@@ -991,6 +1006,7 @@ function TxRow({
   rowAmount: (t: DisplayTx) => number;
   matchingItems: (t: DisplayTx) => DisplayItem[];
   displayType: 'expense' | 'income';
+  refundedAmount: number;
   expanded: boolean;
   onToggleExpand: () => void;
   onEdit: (tx: DisplayTx) => void;
@@ -1168,6 +1184,17 @@ function TxRow({
             ) : null}
             {tx.scanned ? <Ionicons name="scan" size={12} color={colors.primary} /> : null}
             {tx.image ? <Ionicons name="image" size={12} color={colors.textMuted} /> : null}
+            {/* Refund badge on the ORIGINAL expense — signals that some of
+             *  this row's amount has already come back. Not shown on refund
+             *  rows themselves (they already read as green income). */}
+            {refundedAmount > 0 && tx.type !== 'income' ? (
+              <View style={[styles.ccBadge, { backgroundColor: colors.success + '22' }]}>
+                <Ionicons name="arrow-undo" size={10} color={colors.success} />
+                <Text style={[styles.ccBadgeText, { color: colors.success }]}>
+                  Direfund {money(refundedAmount)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -1238,10 +1265,13 @@ function TxRow({
           })}
           {showRemainderRow ? (
             <View style={styles.itemRowSingle}>
+              {/* Icon color matches the transfer aggregation's Biaya /
+               *  Pajak Transaksi (red for fee, green for discount) so
+               *  multi-item baskets and transfers read consistently. */}
               <IconCircle
                 icon={remainderCat.icon}
                 iconSet={remainderCat.iconSet}
-                color={remainderCat.color}
+                color={remainder > 0 ? colors.danger : colors.success}
               />
               <View style={{ flex: 1, marginLeft: spacing.md }}>
                 <View style={styles.rowTopRow}>

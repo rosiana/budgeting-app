@@ -116,8 +116,16 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>🐒 MoMoney · {formatMonth(mKey)}</Text>
+          {/* App logo left of the greeting so the header reads like a
+           *  branded card. Uses the actual icon.png (1024×1024), rendered
+           *  at 40pt so it stays proportional to the "Halo, X 👋" line. */}
+          <Image
+            source={require('../../assets/icon.png')}
+            style={styles.heroLogo}
+            resizeMode="contain"
+          />
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
+            <Text style={styles.greeting}>MoMoney · {formatMonth(mKey)}</Text>
             <Text style={styles.hero}>Halo, {userName} 👋</Text>
           </View>
         </View>
@@ -316,6 +324,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg },
+  heroLogo: { width: 44, height: 44, borderRadius: 10 },
   greeting: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
   hero: { fontSize: 28, fontWeight: '800', color: colors.text },
   eyeBtn: {

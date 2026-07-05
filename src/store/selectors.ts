@@ -52,16 +52,31 @@ const countsAsSpending = (t: Transaction, cc?: CreditCardConfig) =>
   t.category !== 'transfer_out';
 const countsAsIncome = (t: Transaction) =>
   isIncome(t) &&
-  t.incomeCategory !== 'transfer_in';
+  t.incomeCategory !== 'transfer_in' &&
+  // Refunds add to a source balance but are NOT new income — they're a
+  // return of an existing expense, so we net them out of category totals
+  // separately (see addToCategoryTotals) rather than count them here.
+  t.incomeCategory !== 'refund';
 
-/** Total expenses (income, reimbursed, and pending CC purchases ignored). */
+/** True when a row is a refund of an existing expense. */
+export const isRefund = (t: Transaction): boolean =>
+  t.type === 'income' && t.incomeCategory === 'refund';
+
+/** Total expenses (income, reimbursed, and pending CC purchases ignored),
+ *  net of every refund. A refund is treated as a negative expense against
+ *  its own recorded amount — you spent Rp 1.3 mio then got Rp 400 k back, so
+ *  the "Pengeluaran bulan ini" number is Rp 900 k. */
 export function totalSpent(
   transactions: Transaction[],
   cc?: CreditCardConfig
 ): number {
-  return transactions
+  const spent = transactions
     .filter((t) => countsAsSpending(t, cc))
     .reduce((sum, t) => sum + t.amount, 0);
+  const refunded = transactions
+    .filter(isRefund)
+    .reduce((sum, t) => sum + t.amount, 0);
+  return Math.max(0, spent - refunded);
 }
 
 export function totalIncome(transactions: Transaction[]): number {
@@ -97,6 +112,24 @@ function addToCategoryTotals(
   }
 }
 
+/** Reverse of addToCategoryTotals for a refund row — subtracts each item's
+ *  amount from its category so Anggaran / Pengeluaran show the net spend
+ *  after the return. Refund shape mirrors the original expense (single-
+ *  amount or items[]), just with type='income' and incomeCategory='refund'. */
+function subtractRefundFromCategoryTotals(
+  totals: Record<CategoryId, number>,
+  t: Transaction
+): void {
+  const sub = (cat: CategoryId, v: number) => {
+    totals[cat] = (totals[cat] ?? 0) - v;
+  };
+  if (t.items && t.items.length) {
+    t.items.forEach((it) => sub(it.category, it.amount));
+  } else {
+    sub(t.category, t.amount);
+  }
+}
+
 export interface CategorySpend {
   category: CategoryId;
   spent: number;
@@ -110,7 +143,16 @@ export function spendByCategory(
   cc?: CreditCardConfig
 ): CategorySpend[] {
   const totals = {} as Record<CategoryId, number>;
-  for (const t of transactions) if (countsAsSpending(t, cc)) addToCategoryTotals(totals, t);
+  for (const t of transactions) {
+    if (countsAsSpending(t, cc)) addToCategoryTotals(totals, t);
+    else if (isRefund(t)) subtractRefundFromCategoryTotals(totals, t);
+  }
+  // Clamp to zero so a category that received more in refunds than it ever
+  // saw in spending doesn't show a negative "spent" total on Anggaran.
+  Object.keys(totals).forEach((k) => {
+    const c = k as CategoryId;
+    if (totals[c] < 0) totals[c] = 0;
+  });
   return CATEGORIES.map((c) => {
     const spent = totals[c.id] ?? 0;
     const budget = budgets[c.id] ?? 0;
@@ -150,10 +192,39 @@ export function spendByWho(
   cc?: CreditCardConfig
 ): WhoSpend[] {
   const totals = {} as Record<WhoId, number>;
+  const add = (who: WhoId, v: number) => {
+    totals[who] = (totals[who] ?? 0) + v;
+  };
   for (const t of transactions) {
-    if (!countsAsSpending(t, cc)) continue;
-    totals[t.who] = (totals[t.who] ?? 0) + t.amount;
+    if (countsAsSpending(t, cc)) {
+      // Multi-item transactions can have per-item `who` (a mixed Superindo
+      // basket where some items are for Nonik, others for Rumah). Distribute
+      // per item so each person gets credit for THEIR items; any Biaya/Diskon
+      // remainder falls to the parent's who.
+      if (t.items && t.items.length) {
+        const itemsSum = t.items.reduce((s, it) => s + it.amount, 0);
+        for (const it of t.items) add(it.who ?? t.who, it.amount);
+        const remainder = t.amount - itemsSum;
+        if (Math.abs(remainder) >= 0.5) add(t.who, remainder);
+      } else {
+        add(t.who, t.amount);
+      }
+    } else if (isRefund(t)) {
+      // Refunds reduce whichever person's spending they refund. Mirror the
+      // shape: per-item subtraction for a multi-item return, else use the
+      // parent-level who.
+      if (t.items && t.items.length) {
+        for (const it of t.items) add(it.who ?? t.who, -it.amount);
+      } else {
+        add(t.who, -t.amount);
+      }
+    }
   }
+  // Never surface negative totals (heavy refunds on one person shouldn't
+  // read like "Nonik earned money this month").
+  (Object.keys(totals) as WhoId[]).forEach((w) => {
+    if (totals[w] < 0) totals[w] = 0;
+  });
   return (Object.keys(totals) as WhoId[])
     .map((who) => ({ who, spent: totals[who] }))
     .sort((a, b) => b.spent - a.spent);
@@ -174,8 +245,12 @@ export function dailySpend(
   const points: DayPoint[] = [];
   const byDate = new Map<string, number>();
   for (const t of transactions) {
-    if (!countsAsSpending(t, cc)) continue;
-    byDate.set(t.date, (byDate.get(t.date) ?? 0) + t.amount);
+    if (countsAsSpending(t, cc)) {
+      byDate.set(t.date, (byDate.get(t.date) ?? 0) + t.amount);
+    } else if (isRefund(t)) {
+      // Refund lowers the day's spending on the refund's own date.
+      byDate.set(t.date, (byDate.get(t.date) ?? 0) - t.amount);
+    }
   }
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
@@ -220,9 +295,20 @@ export function sourceBalances(
   const bal = {} as Record<SourceId, number>;
   for (const s of SOURCES) bal[s.id] = opening[s.id] ?? 0;
 
+  // Net of settled CC purchases MINUS settled CC refunds. Purchases in a
+  // cycle whose due date has passed hit paymentSource; refunds in a settled
+  // cycle credit paymentSource. Refunds landing in a later cycle stay on the
+  // CC side (they'll net against that cycle's purchases when it settles).
   let settledCc = 0;
   for (const t of transactions) {
     if (isIncome(t)) {
+      // A CC refund's credit goes back to the credit-card side, not the
+      // source account. Fold it into settledCc via the cycle logic; the
+      // regular income path below runs only for non-CC income.
+      if (isRefund(t) && t.creditCard) {
+        if (isCcSettled(t, cc)) settledCc -= t.amount;
+        continue;
+      }
       bal[t.source] = (bal[t.source] ?? 0) + t.amount;
       continue;
     }
@@ -271,15 +357,45 @@ export function monthlyBalances(
   return out;
 }
 
-/** Reimbursable expenses still awaiting payback from the company. */
+/** Total refunded so far against a specific original expense. */
+export function totalRefundedFor(
+  transactions: Transaction[],
+  originalId: string
+): number {
+  return transactions
+    .filter((t) => isRefund(t) && t.refundOf === originalId)
+    .reduce((s, t) => s + t.amount, 0);
+}
+
+/** All refund rows linked to a specific original expense. */
+export function refundsFor(
+  transactions: Transaction[],
+  originalId: string
+): Transaction[] {
+  return transactions.filter((t) => isRefund(t) && t.refundOf === originalId);
+}
+
+/** Reimbursable expenses still awaiting payback (either not marked reimbursed
+ *  the old way, OR the linked refund rows don't yet cover the full amount).
+ *  As we migrate away from the boolean `reimbursed` flag, both mechanisms
+ *  stay honored so existing data doesn't break. */
 export function pendingReimbursements(transactions: Transaction[]): Transaction[] {
   return transactions
-    .filter((t) => isExpense(t) && t.reimbursable && !t.reimbursed)
+    .filter((t) => {
+      if (!isExpense(t) || !t.reimbursable) return false;
+      if (t.reimbursed) return false; // legacy shortcut still works
+      // New model: pending until refund rows cover the original amount.
+      const refunded = totalRefundedFor(transactions, t.id);
+      return refunded + 0.5 < t.amount;
+    })
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 export function reimbursementOutstanding(transactions: Transaction[]): number {
-  return pendingReimbursements(transactions).reduce((s, t) => s + t.amount, 0);
+  return pendingReimbursements(transactions).reduce((s, t) => {
+    const refunded = totalRefundedFor(transactions, t.id);
+    return s + Math.max(0, t.amount - refunded);
+  }, 0);
 }
 
 export interface CreditCardStatus {
@@ -297,14 +413,28 @@ export function creditCardStatus(
 ): CreditCardStatus {
   let outstanding = 0;
   const dueBuckets = new Map<string, number>();
+  const bucket = (date: string, delta: number) => {
+    outstanding += delta;
+    const due = ccDueDate(date, cc);
+    dueBuckets.set(due, (dueBuckets.get(due) ?? 0) + delta);
+  };
   for (const t of transactions) {
-    if (isIncome(t) || !t.creditCard) continue;
+    if (!t.creditCard) continue;
     if (isCcSettled(t, cc)) continue;
-    outstanding += t.amount;
-    const due = ccDueDate(t.date, cc);
-    dueBuckets.set(due, (dueBuckets.get(due) ?? 0) + t.amount);
+    if (isRefund(t)) {
+      // A CC refund in a still-unsettled cycle credits that cycle's total.
+      bucket(t.date, -t.amount);
+    } else if (isIncome(t)) {
+      // Non-refund income on a CC (uncommon) doesn't affect the bill.
+      continue;
+    } else {
+      bucket(t.date, t.amount);
+    }
   }
-  // The soonest unpaid due date.
-  const nextDue = [...dueBuckets.keys()].sort()[0] ?? '';
+  // The soonest unpaid due date with a non-zero balance.
+  const nextDue = [...dueBuckets.entries()]
+    .filter(([, v]) => Math.abs(v) >= 0.5)
+    .map(([k]) => k)
+    .sort()[0] ?? '';
   return { outstanding, nextDue, dueNext: nextDue ? dueBuckets.get(nextDue)! : 0 };
 }

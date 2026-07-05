@@ -35,8 +35,9 @@ var TX_HEADERS = [
   'image', 'scanned', 'deleted', 'createdAt', 'updatedAt',
   // Added later. transferGroup links the two legs of a Transfer for
   // aggregated rendering; ccPaidAt records the ISO date a CC bill was paid
-  // ahead of its natural due date (Bayar Tagihan on the Saldo screen).
-  'transferGroup', 'ccPaidAt',
+  // ahead of its natural due date (Bayar Tagihan on the Saldo screen);
+  // refundOf links a refund income row back to the original expense.
+  'transferGroup', 'ccPaidAt', 'refundOf',
 ];
 
 // --- Entry points ---------------------------------------------------------
@@ -128,6 +129,7 @@ function readTransactions() {
       updatedAt: Number(t.updatedAt) || Number(t.createdAt) || 0,
       transferGroup: t.transferGroup ? String(t.transferGroup) : undefined,
       ccPaidAt: t.ccPaidAt ? formatDate(t.ccPaidAt) : undefined,
+      refundOf: t.refundOf ? String(t.refundOf) : undefined,
     });
   }
   return out;
@@ -259,6 +261,7 @@ function writeTransactions(transactions) {
       t.updatedAt || t.createdAt || 0,
       t.transferGroup || '',
       t.ccPaidAt || '',
+      t.refundOf || '',
     ];
   });
   sh.getRange(2, 1, rows.length, TX_HEADERS.length).setValues(rows);

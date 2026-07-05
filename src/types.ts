@@ -33,6 +33,7 @@ export type IncomeCategoryId =
   | 'investasi' // Investment Profit
   | 'jualan' // Selling
   | 'bunga' // Interest (+)
+  | 'refund' // Refund from a returned purchase (linked via Transaction.refundOf)
   | 'transfer_in' // Internal: transfer leg arriving at an account
   | 'penyesuaian_saldo_in' // Manual balance correction, up
   | 'lainnya_in'; // Others (+)
@@ -154,6 +155,18 @@ export interface Transaction {
    * budget, and income totals — money only moves between accounts.
    */
   transferGroup?: string;
+  /**
+   * When set, this transaction is a REFUND of the referenced expense. Refunds
+   * are stored as `type: 'income'` with `incomeCategory: 'refund'` and mirror
+   * the refunded portion (single-amount, or per-item via `items[]` for a
+   * partial return of a multi-item basket). Refund rows:
+   *   • ADD to the source balance on their own date (respecting CC cycles
+   *     when `creditCard: true`).
+   *   • SUBTRACT from the category totals so Anggaran / Pengeluaran read the
+   *     net spend after the return.
+   *   • Do NOT count as real income (they aren't new money).
+   */
+  refundOf?: string;
 }
 
 /** Per-category monthly spending limit, keyed by CategoryId. */

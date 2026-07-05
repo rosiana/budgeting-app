@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
@@ -19,8 +21,11 @@ import { ccDueDate } from '../utils/cc';
 import { formatCurrency, formatDateShort, todayISO } from '../utils/format';
 import { formatAmountInput, parseAmountInput, useMoney } from '../utils/money';
 
+type Nav = NativeStackNavigationProp<import('../navigation/types').RootStackParamList>;
+
 export default function BalancesScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<Nav>();
   const {
     transactions,
     openingBalances,
@@ -262,12 +267,35 @@ export default function BalancesScreen() {
                   <Text style={styles.reimMerchant} numberOfLines={1}>{t.merchant}</Text>
                   <Text style={styles.reimMeta}>{money(t.amount)} · {formatDateShort(t.date)}</Text>
                 </View>
+                {/* Lunas opens the Refund modal on the transaction so the
+                 *  reimbursement lands as a real refund tx (correct date +
+                 *  source), not a silent boolean flip. */}
                 <TouchableOpacity
-                  onPress={() => updateTransaction({ ...t, reimbursed: true })}
+                  onPress={() =>
+                    navigation.navigate('AddTransaction', {
+                      draft: {
+                        id: t.id,
+                        type: t.type,
+                        merchant: t.merchant,
+                        amount: t.amount,
+                        date: t.date,
+                        category: t.category,
+                        who: t.who,
+                        source: t.source,
+                        creditCard: t.creditCard,
+                        reimbursable: t.reimbursable,
+                        reimbursed: t.reimbursed,
+                        note: t.note,
+                        items: t.items,
+                        image: t.image,
+                        scanned: t.scanned,
+                      },
+                    })
+                  }
                   style={styles.reimBtn}
                 >
-                  <Ionicons name="checkmark" size={14} color={colors.white} />
-                  <Text style={styles.reimBtnText}>Lunas</Text>
+                  <Ionicons name="arrow-undo" size={14} color={colors.white} />
+                  <Text style={styles.reimBtnText}>Refund</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -628,10 +656,7 @@ const styles = StyleSheet.create({
   kkBillRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingBottom: spacing.md,
     marginBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     gap: spacing.md,
   },
   payBtn: {

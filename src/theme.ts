@@ -146,6 +146,10 @@ export const INCOME_CATEGORIES: IncomeCategory[] = [
   { id: 'bunga', label: 'Bunga', icon: 'add-circle', color: '#7A6BF5' },
   // Untung Investasi label kept for system-generated rows from upward
   // adjustments on investment accounts.
+  // System-generated when the user refunds an existing expense. Never picked
+  // from the income form; created by the Refund modal on the transaction
+  // edit view. Renders as green + in the Transaksi list.
+  { id: 'refund', label: 'Refund', icon: 'arrow-undo-circle', color: '#6BB98A' },
   { id: 'transfer_in', label: 'Transfer Masuk', icon: 'arrow-down-circle', color: '#4C8BF5' },
   { id: 'penyesuaian_saldo_in', label: 'Penyesuaian Saldo', icon: 'sync', color: '#7E8B91' },
   { id: 'lainnya_in', label: 'Lainnya', icon: 'ellipsis-horizontal', color: '#8A9A95' },
