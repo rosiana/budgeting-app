@@ -267,7 +267,11 @@ export default function TransactionsScreen() {
                 who: t.who,
                 chipLabel: w.label,
                 chipColor: w.color,
-                iconOverride: { name: 'arrow-down-circle', color: colors.success },
+                // Use pricetags via the Diskon category default (no
+                // iconOverride), tinted green in the item renderer via
+                // itemType='income'. Was arrow-down-circle briefly, which
+                // read as a Transfer/Masuk cue — pricetags matches the
+                // remainder-row rendering for other Diskon cases.
                 itemType: 'income',
               } as DisplayItem,
             ],

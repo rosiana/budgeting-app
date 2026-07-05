@@ -220,7 +220,13 @@ export default function BudgetsScreen() {
         rec={recEditing}
         onClose={() => setRecEditing(null)}
         onSave={(r) => {
-          upsertRecurring(r);
+          // Strip fields that don't belong to the picked type so the
+          // stored shape stays lean and the Bayar branch reads cleanly.
+          const cleaned: RecurringTx =
+            r.txType === 'transfer'
+              ? { ...r, category: 'transfer_out', incomeCategory: undefined, amount: undefined, source: undefined, creditCard: undefined, reimbursable: undefined }
+              : { ...r, fromSource: undefined, toSource: undefined, transferAmount: undefined, transferFee: undefined };
+          upsertRecurring(cleaned);
           setRecEditing(null);
         }}
         onDelete={(r) => {
@@ -278,7 +284,7 @@ function newRecurring(): RecurringTx {
     name: '',
     txType: 'expense',
     category: 'lainnya',
-    who: 'rumah',
+    pic: 'both',
     dayOfMonth: today.getDate(),
     intervalMonths: 1,
     anchorMonth: today.getMonth() + 1,
@@ -289,6 +295,27 @@ function newRecurring(): RecurringTx {
 /** Bayar: pre-fill the Add Transaction form from a rec tx, then let the
  *  form handle the save. `recurringId` is forwarded so onSave marks it paid. */
 function payRecurring(r: RecurringTx, nav: Nav) {
+  // Transfer rec txs open the form on the Transfer tab with the group's
+  // legs pre-filled — same shape used by "edit transfer" from Transaksi.
+  if (r.txType === 'transfer') {
+    const amountOut = (r.transferAmount ?? 0) + (r.transferFee ?? 0);
+    const amountIn = r.transferAmount ?? 0;
+    nav.navigate('AddTransaction', {
+      draft: {
+        type: 'transfer',
+        date: toISODate(new Date()),
+        transfer: {
+          group: uid(),
+          fromSource: r.fromSource ?? 'bca',
+          toSource: r.toSource ?? 'seabank',
+          amountOut,
+          amountIn,
+        },
+        recurringId: r.id,
+      },
+    });
+    return;
+  }
   nav.navigate('AddTransaction', {
     draft: {
       type: r.txType,
@@ -330,24 +357,26 @@ function RecurringList({
   });
   return (
     <View>
-      <Text style={styles.hint}>
-        Pengingat bulanan untuk KPR, langganan, SPP, dan pengeluaran rutin
-        lainnya. Aktifkan bel untuk dapat notifikasi jam 09:00 di tanggal
-        yang kamu tentukan.
-      </Text>
+      <Text style={styles.hint}>Pengingat bulanan untuk setiap transaksi rutin.</Text>
+      <TouchableOpacity onPress={onAdd} style={styles.addRecBtn} activeOpacity={0.85}>
+        <Ionicons name="add" size={18} color={colors.primary} />
+        <Text style={styles.addRecText}>Tambah Transaksi Rutin</Text>
+      </TouchableOpacity>
       {list.length === 0 ? (
         <Card>
           <Text style={styles.emptyText}>
-            Belum ada transaksi rutin. Tap tombol di bawah untuk menambah
+            Belum ada transaksi rutin. Tap tombol di atas untuk menambah
             (mis. KPR, Netflix, SPP Nonik).
           </Text>
         </Card>
       ) : (
         list.map((r) => {
-          const cat = r.txType === 'income'
-            ? INCOME_CATEGORY_MAP[r.incomeCategory ?? 'lainnya_in']
-            : CATEGORY_MAP[r.category];
-          const w = whoOf(r.who);
+          const cat = r.txType === 'transfer'
+            ? { icon: 'swap-horizontal', color: colors.primary }
+            : r.txType === 'income'
+              ? INCOME_CATEGORY_MAP[r.incomeCategory ?? 'lainnya_in']
+              : CATEGORY_MAP[r.category];
+          const picLabel = r.pic === 'both' ? 'Rosi + Rizal' : r.pic === 'rosi' ? 'Rosi' : 'Rizal';
           const unpaid = isUnpaidThisPeriod(r, today);
           const nextDate = nextActivePeriodDate(r, today);
           const intervalLabel = r.intervalMonths === 3 ? 'per 3 bulan' : 'per bulan';
@@ -370,8 +399,8 @@ function RecurringList({
                     <Text style={styles.recName} numberOfLines={1}>{r.name || 'Tanpa nama'}</Text>
                   </View>
                   <Text style={styles.recMeta}>
-                    Tgl {r.dayOfMonth} · {intervalLabel} · {w.emoji} {w.label}
-                    {r.amount ? ` · ${money(r.amount)}` : ''}
+                    Tgl {r.dayOfMonth} · {intervalLabel} · PIC {picLabel}
+                    {r.amount || r.transferAmount ? ` · ${money(r.amount ?? r.transferAmount ?? 0)}` : ''}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -403,10 +432,6 @@ function RecurringList({
           );
         })
       )}
-      <TouchableOpacity onPress={onAdd} style={styles.addRecBtn} activeOpacity={0.85}>
-        <Ionicons name="add" size={18} color={colors.primary} />
-        <Text style={styles.addRecText}>Tambah Transaksi Rutin</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -428,21 +453,42 @@ function RecurringEditor({
   React.useEffect(() => setDraft(rec), [rec?.id]);
   if (!draft) return null;
   const isIncome = draft.txType === 'income';
+  const isTransfer = draft.txType === 'transfer';
   const isNew = !rec?.name; // heuristic: newRecurring() has empty name
   const setField = <K extends keyof RecurringTx>(k: K, v: RecurringTx[K]) =>
     setDraft((d) => (d ? { ...d, [k]: v } : d));
-  const isValid = draft.name.trim().length > 0 && draft.dayOfMonth >= 1 && draft.dayOfMonth <= 31;
+
+  // Sources available for this PIC (drives both the plain "Sumber Dana"
+  // picker and Transfer's From/To selection).
+  const picSources = draft.pic === 'both'
+    ? [...sourcesForPerson('rosi'), ...sourcesForPerson('rizal')]
+    : sourcesForPerson(draft.pic);
+
+  const isValid =
+    draft.name.trim().length > 0 &&
+    draft.dayOfMonth >= 1 && draft.dayOfMonth <= 31 &&
+    (!isTransfer ||
+      (!!draft.fromSource && !!draft.toSource && draft.fromSource !== draft.toSource &&
+       !!draft.transferAmount && draft.transferAmount > 0));
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalWrap}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={[styles.recSheet, { paddingBottom: insets.bottom + spacing.xl }]}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={styles.sheetTitle}>
+          {/* Modal header — close X on the left, centered title, matches the
+           *  Add Transaction modal so the two screens read as a set. */}
+          <View style={styles.recModalHeader}>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <Ionicons name="close" size={26} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.recModalTitle}>
               {isNew ? 'Tambah Transaksi Rutin' : 'Ubah Transaksi Rutin'}
             </Text>
+            <View style={{ width: 26 }} />
+          </View>
 
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text style={styles.label}>Nama</Text>
             <TextInput
               value={draft.name}
@@ -455,92 +501,187 @@ function RecurringEditor({
             <Text style={styles.label}>Tipe</Text>
             <SegmentTabs
               value={draft.txType}
-              onChange={(v) => setField('txType', v as TxType)}
+              onChange={(v) => {
+                const t = v as TxType;
+                // Seed transfer defaults on switch so the form is valid
+                // without extra taps. Toggle to expense/income clears the
+                // transfer-only fields at save time.
+                setField('txType', t);
+                if (t === 'transfer' && !draft.fromSource) {
+                  setField('fromSource', picSources[0]?.id);
+                  setField('toSource', picSources.find((s) => s.id !== picSources[0]?.id)?.id);
+                }
+              }}
               options={[
                 { id: 'expense', label: 'Keluar', icon: 'arrow-up-circle', activeIconColor: colors.danger },
                 { id: 'income', label: 'Masuk', icon: 'arrow-down-circle', activeIconColor: colors.success },
+                { id: 'transfer', label: 'Transfer', icon: 'swap-horizontal', activeIconColor: colors.primary },
               ]}
-            />
-
-            <Text style={styles.label}>Kategori</Text>
-            <View style={styles.chipWrap}>
-              {isIncome
-                ? PICKABLE_INCOME_CATEGORIES.map((id) => {
-                    const c = INCOME_CATEGORY_MAP[id];
-                    const active = draft.incomeCategory === id;
-                    return (
-                      <TouchableOpacity
-                        key={id}
-                        onPress={() => setField('incomeCategory', id)}
-                        style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-                      >
-                        <Ionicons name={c.icon as any} size={14} color={c.color} />
-                        <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })
-                : PICKABLE_CATEGORIES.map((id) => {
-                    const c = CATEGORY_MAP[id];
-                    const active = draft.category === id;
-                    return (
-                      <TouchableOpacity
-                        key={id}
-                        onPress={() => setField('category', id)}
-                        style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
-                      >
-                        <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
-                        <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-            </View>
-
-            <Text style={styles.label}>Jumlah (opsional)</Text>
-            <TextInput
-              value={draft.amount ? formatAmountInput(String(Math.round(draft.amount))) : ''}
-              onChangeText={(t) => {
-                const n = parseAmountInput(formatAmountInput(t));
-                setField('amount', n > 0 ? n : undefined);
-              }}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textMuted}
-              style={styles.recInput}
             />
 
             <Text style={styles.label}>PIC (yang bayar & terima notifikasi)</Text>
             <View style={styles.chipWrap}>
-              {WHO.map((w) => {
-                const active = draft.who === w.id;
+              {(['both', 'rosi', 'rizal'] as const).map((p) => {
+                const active = draft.pic === p;
+                const label = p === 'both' ? 'Rosi + Rizal' : p === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal';
+                const color = p === 'both' ? colors.primary : p === 'rosi' ? WHO[0].color : WHO[1].color;
                 return (
                   <TouchableOpacity
-                    key={w.id}
-                    onPress={() => setField('who', w.id)}
-                    style={[styles.chip, { borderColor: active ? w.color : colors.border, backgroundColor: active ? w.color + '18' : colors.card }]}
+                    key={p}
+                    onPress={() => setField('pic', p)}
+                    style={[styles.chip, { borderColor: active ? color : colors.border, backgroundColor: active ? color + '18' : colors.card }]}
                   >
-                    <View style={[styles.chipDot, { backgroundColor: w.color }]} />
-                    <Text style={[styles.chipText, active && { color: w.color }]}>{w.label}</Text>
+                    <Text style={[styles.chipText, active && { color }]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            <Text style={styles.label}>Sumber Dana (opsional)</Text>
-            <View style={styles.chipWrap}>
-              {sourcesForPerson(sourceOf(draft.source ?? 'bca').owner).map((s) => {
-                const active = draft.source === s.id;
-                return (
-                  <TouchableOpacity
-                    key={s.id}
-                    onPress={() => setField('source', s.id)}
-                    style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
-                  >
-                    <Ionicons name={s.icon as any} size={14} color={s.color} />
-                    <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {isTransfer ? (
+              <>
+                <Text style={styles.label}>Dari</Text>
+                <View style={styles.chipWrap}>
+                  {picSources.map((s) => {
+                    const active = draft.fromSource === s.id;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => setField('fromSource', s.id)}
+                        style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
+                      >
+                        <Ionicons name={s.icon as any} size={14} color={s.color} />
+                        <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Ke</Text>
+                <View style={styles.chipWrap}>
+                  {picSources.filter((s) => s.id !== draft.fromSource).map((s) => {
+                    const active = draft.toSource === s.id;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => setField('toSource', s.id)}
+                        style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
+                      >
+                        <Ionicons name={s.icon as any} size={14} color={s.color} />
+                        <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Jumlah Transfer</Text>
+                <TextInput
+                  value={draft.transferAmount ? formatAmountInput(String(Math.round(draft.transferAmount))) : ''}
+                  onChangeText={(t) => {
+                    const n = parseAmountInput(formatAmountInput(t));
+                    setField('transferAmount', n > 0 ? n : undefined);
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.recInput}
+                />
+
+                <Text style={styles.label}>Biaya / Pajak Transaksi (opsional)</Text>
+                <TextInput
+                  value={draft.transferFee ? formatAmountInput(String(Math.round(draft.transferFee))) : ''}
+                  onChangeText={(t) => {
+                    const n = parseAmountInput(formatAmountInput(t));
+                    setField('transferFee', n > 0 ? n : undefined);
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.recInput}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Kategori</Text>
+                <View style={styles.chipWrap}>
+                  {isIncome
+                    ? PICKABLE_INCOME_CATEGORIES.map((id) => {
+                        const c = INCOME_CATEGORY_MAP[id];
+                        const active = draft.incomeCategory === id;
+                        return (
+                          <TouchableOpacity
+                            key={id}
+                            onPress={() => setField('incomeCategory', id)}
+                            style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                          >
+                            <Ionicons name={c.icon as any} size={14} color={c.color} />
+                            <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    : PICKABLE_CATEGORIES.map((id) => {
+                        const c = CATEGORY_MAP[id];
+                        const active = draft.category === id;
+                        return (
+                          <TouchableOpacity
+                            key={id}
+                            onPress={() => setField('category', id)}
+                            style={[styles.chip, { borderColor: active ? c.color : colors.border, backgroundColor: active ? c.color + '18' : colors.card }]}
+                          >
+                            <CatIcon name={c.icon} set={c.iconSet} size={14} color={c.color} />
+                            <Text style={[styles.chipText, active && { color: c.color }]}>{c.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                </View>
+
+                <Text style={styles.label}>Jumlah (opsional)</Text>
+                <TextInput
+                  value={draft.amount ? formatAmountInput(String(Math.round(draft.amount))) : ''}
+                  onChangeText={(t) => {
+                    const n = parseAmountInput(formatAmountInput(t));
+                    setField('amount', n > 0 ? n : undefined);
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.recInput}
+                />
+
+                <Text style={styles.label}>Untuk Siapa (opsional)</Text>
+                <View style={styles.chipWrap}>
+                  {WHO.map((w) => {
+                    const active = draft.who === w.id;
+                    return (
+                      <TouchableOpacity
+                        key={w.id}
+                        onPress={() => setField('who', active ? undefined : w.id)}
+                        style={[styles.chip, { borderColor: active ? w.color : colors.border, backgroundColor: active ? w.color + '18' : colors.card }]}
+                      >
+                        <View style={[styles.chipDot, { backgroundColor: w.color }]} />
+                        <Text style={[styles.chipText, active && { color: w.color }]}>{w.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.label}>Sumber Dana (opsional)</Text>
+                <View style={styles.chipWrap}>
+                  {picSources.map((s) => {
+                    const active = draft.source === s.id;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => setField('source', active ? undefined : s.id)}
+                        style={[styles.chip, { borderColor: active ? s.color : colors.border, backgroundColor: active ? s.color + '18' : colors.card }]}
+                      >
+                        <Ionicons name={s.icon as any} size={14} color={s.color} />
+                        <Text style={[styles.chipText, active && { color: s.color }]}>{s.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
             <Text style={styles.label}>Frekuensi</Text>
             <SegmentTabs
@@ -599,7 +740,7 @@ function RecurringEditor({
                   Notifikasi tanggal jatuh tempo
                 </Text>
                 <Text style={styles.enabledSub}>
-                  Kirim ke {whoOf(draft.who).label} jam 09:00, "Transaksi Rutin: {draft.name || '<nama>'}"
+                  Kirim ke {draft.pic === 'both' ? 'Rosi + Rizal' : draft.pic === 'rosi' ? 'Rosi' : 'Rizal'} jam 09:00, "Transaksi Rutin: {draft.name || '<nama>'}"
                 </Text>
               </View>
               <View style={[styles.switchTrack, draft.enabled && styles.switchTrackOn]}>
@@ -761,9 +902,16 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     maxHeight: '90%',
   },
+  recModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.md,
+  },
+  recModalTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   label: { fontSize: 13, fontWeight: '700', color: colors.textMuted, marginBottom: 6, marginTop: spacing.lg },
   recInput: {
     backgroundColor: colors.bg,

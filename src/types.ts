@@ -201,10 +201,32 @@ export interface RecurringTx {
   category: CategoryId; // for expense
   incomeCategory?: IncomeCategoryId; // for income
   amount?: number; // optional prefill; user can adjust at Bayar time
-  who: WhoId; // PIC — also the notification target and default payer/receiver
+  /**
+   * PIC — who should pay AND who receives the notification. Also drives the
+   * source picker (only accounts owned by this person's side).
+   *   • 'both'  → both phones get the notification, all sources available
+   *   • 'rosi'  → only Rosi's phone; Rosi's sources only
+   *   • 'rizal' → only Rizal's phone; Rizal's sources only
+   */
+  pic: 'both' | 'rosi' | 'rizal';
+  /**
+   * Untuk Siapa — pre-fills the transaction's `who` field (Rosi / Rizal /
+   * Nonik / Rumah / Lainnya). Different from PIC: PIC is "who pays", who is
+   * "who the money is for". Optional; when omitted the transaction form's
+   * default kicks in on Bayar.
+   */
+  who?: WhoId;
   source?: SourceId;
   creditCard?: boolean;
   reimbursable?: boolean;
+  /** Transfer-only: source account (from). */
+  fromSource?: SourceId;
+  /** Transfer-only: destination account (to). */
+  toSource?: SourceId;
+  /** Transfer-only: transferred amount (money that crossed). */
+  transferAmount?: number;
+  /** Transfer-only: optional fee on top. */
+  transferFee?: number;
   dayOfMonth: number; // 1-31, clamped to last day of month
   /** 1 = monthly (default), 3 = every 3 months. Nonik's SPP uses 3. */
   intervalMonths: 1 | 3;

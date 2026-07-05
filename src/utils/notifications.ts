@@ -101,7 +101,15 @@ export async function ensureNotificationsScheduled(
     // built-in daily / month-end / Rizal-26 reminders.
     for (const r of recurring) {
       if (!r.enabled || r.deleted) continue;
-      if (r.who !== 'rumah' && r.who !== person) continue;
+      // PIC drives notification routing:
+      //   'both'  → both phones
+      //   'rosi'  → only Rosi's phone
+      //   'rizal' → only Rizal's phone
+      // Legacy rec txs without a `pic` field fall back to who: rosi/rizal
+      // map to that person, anything else to 'both'.
+      const pic: 'both' | 'rosi' | 'rizal' =
+        r.pic ?? (r.who === 'rosi' || r.who === 'rizal' ? r.who : 'both');
+      if (pic !== 'both' && pic !== person) continue;
       // Skip if it's already been paid for this period.
       if (!isUnpaidThisPeriod(r)) continue;
       const target = nextActivePeriodDate(r);
