@@ -203,7 +203,7 @@ export default function DashboardScreen() {
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Tabs', { screen: 'Budgets' } as any)}
-          style={[styles.rutinCard, unpaidRutinCount === 0 && styles.rutinCardAllPaid]}
+          style={styles.rutinCard}
         >
           <View style={[styles.rutinIcon, unpaidRutinCount === 0 && { backgroundColor: colors.success }]}>
             <Ionicons

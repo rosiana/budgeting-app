@@ -71,6 +71,23 @@ export default function BudgetsScreen() {
   );
   // Totals/warnings only count enabled categories.
   const byCat = byCatAll.filter((c) => !isDisabled(c.category));
+  // Rendered list: active categories first, sorted by pct desc (closest to
+  // limit at the top — mirrors the Dashboard's Anggaran preview). Inactive
+  // categories fall to the bottom of the list, in their natural order.
+  const shownList = useMemo(() => {
+    const active = byCatAll.filter((c) => !isDisabled(c.category));
+    active.sort((a, b) => {
+      // Categories with no budget set (pct=0 but user hasn't chosen a
+      // limit) fall to the end of the active block — otherwise a 0/0 row
+      // reads misleadingly as "most under budget".
+      const aHas = a.budget > 0 ? 1 : 0;
+      const bHas = b.budget > 0 ? 1 : 0;
+      if (aHas !== bHas) return bHas - aHas;
+      return b.pct - a.pct;
+    });
+    const inactive = byCatAll.filter((c) => isDisabled(c.category));
+    return [...active, ...inactive];
+  }, [byCatAll, disabledBudgets]);
   const spent = byCat.reduce((s, c) => s + c.spent, 0);
   const totalBudget = byCat.reduce((s, c) => s + c.budget, 0);
   const overCount = byCat.filter((c) => c.budget > 0 && c.spent > c.budget).length;
@@ -147,7 +164,7 @@ export default function BudgetsScreen() {
           tidak ingin dianggarkan.
         </Text>
 
-        {byCatAll.map((c) => {
+        {shownList.map((c) => {
           const cat = categoryOf(c.category);
           const disabled = isDisabled(c.category);
           const over = c.budget > 0 && c.spent > c.budget;
@@ -357,8 +374,11 @@ function RecurringList({
   });
   return (
     <View>
-      <Text style={styles.hint}>Pengingat bulanan untuk setiap transaksi rutin.</Text>
-      <TouchableOpacity onPress={onAdd} style={styles.addRecBtn} activeOpacity={0.85}>
+      <Text style={styles.hint}>
+        Pengingat bulanan untuk setiap transaksi rutin. Aktifkan bel untuk
+        dapat notifikasi jam 09:00 di tanggal yang kamu tentukan.
+      </Text>
+      <TouchableOpacity onPress={onAdd} style={[styles.addRecBtn, { marginBottom: spacing.md }]} activeOpacity={0.85}>
         <Ionicons name="add" size={18} color={colors.primary} />
         <Text style={styles.addRecText}>Tambah Transaksi Rutin</Text>
       </TouchableOpacity>
@@ -385,7 +405,7 @@ function RecurringList({
               key={r.id}
               activeOpacity={0.85}
               onPress={() => onEdit(r)}
-              style={[styles.recCard, unpaid && r.enabled && styles.recCardUnpaid]}
+              style={styles.recCard}
             >
               <View style={styles.recHead}>
                 <View style={{ flex: 1 }}>
@@ -399,8 +419,7 @@ function RecurringList({
                     <Text style={styles.recName} numberOfLines={1}>{r.name || 'Tanpa nama'}</Text>
                   </View>
                   <Text style={styles.recMeta}>
-                    Tgl {r.dayOfMonth} · {intervalLabel} · PIC {picLabel}
-                    {r.amount || r.transferAmount ? ` · ${money(r.amount ?? r.transferAmount ?? 0)}` : ''}
+                    Tanggal {r.dayOfMonth} {intervalLabel} · PIC {picLabel}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -523,7 +542,11 @@ function RecurringEditor({
             <View style={styles.chipWrap}>
               {(['both', 'rosi', 'rizal'] as const).map((p) => {
                 const active = draft.pic === p;
-                const label = p === 'both' ? 'Rosi + Rizal' : p === 'rosi' ? '🎀 Rosi' : '🕶️ Rizal';
+                // No emoji in the label — emoji glyphs render taller than
+                // plain text and push the chip height above the other
+                // rows. Use the same chipDot pattern as Untuk Siapa so all
+                // chips land at the same height.
+                const label = p === 'both' ? 'Rosi + Rizal' : p === 'rosi' ? 'Rosi' : 'Rizal';
                 const color = p === 'both' ? colors.primary : p === 'rosi' ? WHO[0].color : WHO[1].color;
                 return (
                   <TouchableOpacity
@@ -531,6 +554,7 @@ function RecurringEditor({
                     onPress={() => setField('pic', p)}
                     style={[styles.chip, { borderColor: active ? color : colors.border, backgroundColor: active ? color + '18' : colors.card }]}
                   >
+                    <View style={[styles.chipDot, { backgroundColor: color }]} />
                     <Text style={[styles.chipText, active && { color }]}>{label}</Text>
                   </TouchableOpacity>
                 );
