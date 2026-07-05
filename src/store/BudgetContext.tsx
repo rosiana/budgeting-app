@@ -14,9 +14,11 @@ import {
   Budgets,
   CategoryId,
   CreditCardConfig,
+  RecurringTx,
   SourceId,
   Transaction,
 } from '../types';
+import { currentPeriodKey } from '../utils/recurring';
 import { uid } from '../utils/id';
 import { DEFAULT_BUDGETS, SEED_DATA } from './seed';
 
@@ -65,6 +67,9 @@ type Action =
   | { type: 'toggleBudget'; category: CategoryId }
   | { type: 'setOpeningBalance'; source: SourceId; amount: number }
   | { type: 'setCreditCard'; patch: Partial<CreditCardConfig> }
+  | { type: 'upsertRecurring'; rec: RecurringTx }
+  | { type: 'deleteRecurring'; id: string }
+  | { type: 'markRecurringPaid'; id: string; period: string }
   | { type: 'replaceData'; data: SyncData }
   | { type: 'reset' };
 
@@ -74,6 +79,7 @@ const EMPTY: AppData = {
   disabledBudgets: [],
   openingBalances: {},
   creditCard: DEFAULT_CREDIT_CARD,
+  recurring: [],
   settingsUpdatedAt: 0,
 };
 
@@ -124,6 +130,32 @@ function reducer(state: AppData, action: Action): AppData {
         creditCard: { ...state.creditCard, ...action.patch },
         settingsUpdatedAt: now,
       };
+    case 'upsertRecurring': {
+      const list = state.recurring ?? [];
+      const exists = list.some((r) => r.id === action.rec.id);
+      const next = exists
+        ? list.map((r) => (r.id === action.rec.id ? { ...action.rec, updatedAt: now } : r))
+        : [{ ...action.rec, updatedAt: now }, ...list];
+      return { ...state, recurring: next };
+    }
+    case 'deleteRecurring': {
+      const list = state.recurring ?? [];
+      return {
+        ...state,
+        recurring: list.map((r) =>
+          r.id === action.id ? { ...r, deleted: true, updatedAt: now } : r
+        ),
+      };
+    }
+    case 'markRecurringPaid': {
+      const list = state.recurring ?? [];
+      return {
+        ...state,
+        recurring: list.map((r) =>
+          r.id === action.id ? { ...r, lastPaidPeriod: action.period, updatedAt: now } : r
+        ),
+      };
+    }
     case 'replaceData':
       return {
         transactions: migrateTransactions(action.data.transactions),
@@ -137,6 +169,7 @@ function reducer(state: AppData, action: Action): AppData {
             ? { paymentSource: migrateSource(action.data.creditCard.paymentSource, 'rosi') }
             : {}),
         },
+        recurring: action.data.recurring ?? state.recurring ?? [],
         settingsUpdatedAt: action.data.settingsUpdatedAt ?? state.settingsUpdatedAt,
       };
     case 'reset':
@@ -146,6 +179,7 @@ function reducer(state: AppData, action: Action): AppData {
         disabledBudgets: [],
         openingBalances: {},
         creditCard: DEFAULT_CREDIT_CARD,
+        recurring: [],
         settingsUpdatedAt: Date.now(),
       };
     default:
@@ -167,6 +201,12 @@ interface BudgetContextValue {
   toggleBudget: (category: CategoryId) => void;
   setOpeningBalance: (source: SourceId, amount: number) => void;
   setCreditCard: (patch: Partial<CreditCardConfig>) => void;
+  /** Live recurring-tx list (soft-deleted tombstones hidden). */
+  recurring: RecurringTx[];
+  upsertRecurring: (rec: RecurringTx) => void;
+  deleteRecurring: (id: string) => void;
+  /** Mark this rec tx paid for the current period (called after Bayar). */
+  markRecurringPaidNow: (id: string) => void;
   /** Snapshot of the data mirrored to the spreadsheet. */
   syncData: SyncData;
   syncConfig: SyncConfig;
@@ -246,7 +286,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       .map((t) => `${t.id}:${t.updatedAt || t.createdAt || 0}:${t.deleted ? 'D' : ''}`)
       .sort()
       .join('|');
-    return `${txSig}#${s.settingsUpdatedAt}`;
+    const recSig = (s.recurring ?? [])
+      .map((r) => `${r.id}:${r.updatedAt || 0}:${r.deleted ? 'D' : ''}:${r.lastPaidPeriod ?? ''}`)
+      .sort()
+      .join('|');
+    return `${txSig}#${recSig}#${s.settingsUpdatedAt}`;
   }
 
   const runSync = React.useCallback(
@@ -377,6 +421,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
                   ? { paymentSource: migrateSource(parsed.creditCard.paymentSource, 'rosi') }
                   : {}),
               },
+              recurring: parsed.recurring ?? [],
               settingsUpdatedAt: parsed.settingsUpdatedAt ?? 0,
             },
           });
@@ -433,12 +478,21 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       setOpeningBalance: (source, amount) =>
         dispatch({ type: 'setOpeningBalance', source, amount }),
       setCreditCard: (patch) => dispatch({ type: 'setCreditCard', patch }),
+      recurring: (state.recurring ?? []).filter((r) => !r.deleted),
+      upsertRecurring: (rec) => dispatch({ type: 'upsertRecurring', rec }),
+      deleteRecurring: (id) => dispatch({ type: 'deleteRecurring', id }),
+      markRecurringPaidNow: (id) => {
+        const rec = (state.recurring ?? []).find((r) => r.id === id);
+        if (!rec) return;
+        dispatch({ type: 'markRecurringPaid', id, period: currentPeriodKey(rec) });
+      },
       syncData: {
         transactions: state.transactions, // includes tombstones for sync
         budgets: state.budgets,
         disabledBudgets: state.disabledBudgets,
         openingBalances: state.openingBalances,
         creditCard: state.creditCard,
+        recurring: state.recurring ?? [],
         settingsUpdatedAt: state.settingsUpdatedAt,
       },
       syncConfig,

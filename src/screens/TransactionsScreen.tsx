@@ -245,6 +245,37 @@ export default function TransactionsScreen() {
         investasiByDate.get(key)!.push(t);
         continue;
       }
+      // Regular multi-item basket: when there's a NEGATIVE remainder (a
+      // Diskon / Bonus / Cashback line), synthesize an income-typed item so
+      // the row surfaces in the Masuk tab too, showing an accordion whose
+      // only visible item is that Diskon. Positive remainder (Biaya / Pajak
+      // Transaksi) stays an expense — the whole basket already appears in
+      // Keluar, no cross-tab surfacing needed.
+      if (t.items && t.items.length && t.type !== 'income') {
+        const itemsSum = t.items.reduce((s, it) => s + it.amount, 0);
+        const remainder = t.amount - itemsSum;
+        if (remainder < -0.5) {
+          const w = whoOf(t.who);
+          out.push({
+            ...t,
+            items: [
+              ...t.items,
+              {
+                description: 'Diskon',
+                amount: Math.abs(remainder),
+                category: 'diskon',
+                who: t.who,
+                chipLabel: w.label,
+                chipColor: w.color,
+                iconOverride: { name: 'arrow-down-circle', color: colors.success },
+                itemType: 'income',
+              } as DisplayItem,
+            ],
+            suppressRemainder: true,
+          });
+          continue;
+        }
+      }
       out.push(t);
     }
 

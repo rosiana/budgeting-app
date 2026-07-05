@@ -182,6 +182,42 @@ export interface CreditCardConfig {
   paymentSource: SourceId;
 }
 
+/**
+ * A recurring transaction reminder (KPR, Netflix, Nonik's SPP, …). Each rec
+ * tx has a monthly (or every-3-months) schedule; at 09:00 on the due day of
+ * an active period, a notification fires with the title
+ * "Transaksi Rutin: <name>". Tapping the notification (or the Bayar button
+ * on Perencanaan) opens Add Transaction pre-filled from these fields.
+ *
+ * Marking one paid records the period (`YYYY-MM`) in `lastPaidPeriod` so the
+ * Dashboard "belum dibayar" count and the next-notification scheduler know
+ * to skip it for this period.
+ */
+export interface RecurringTx {
+  id: string;
+  enabled: boolean; // whether the notification is scheduled
+  name: string; // used as merchant + notification body
+  txType: TxType;
+  category: CategoryId; // for expense
+  incomeCategory?: IncomeCategoryId; // for income
+  amount?: number; // optional prefill; user can adjust at Bayar time
+  who: WhoId; // PIC — also the notification target and default payer/receiver
+  source?: SourceId;
+  creditCard?: boolean;
+  reimbursable?: boolean;
+  dayOfMonth: number; // 1-31, clamped to last day of month
+  /** 1 = monthly (default), 3 = every 3 months. Nonik's SPP uses 3. */
+  intervalMonths: 1 | 3;
+  /** When intervalMonths > 1, this pins the cycle. e.g. anchorMonth=1 with
+   *  intervalMonths=3 → fires in Jan, Apr, Jul, Oct. */
+  anchorMonth?: number; // 1-12
+  /** Period key (`YYYY-MM`) of the last time this rec tx was marked paid. */
+  lastPaidPeriod?: string;
+  updatedAt: number;
+  /** Soft-delete tombstone for sync — mirrors Transaction.deleted. */
+  deleted?: boolean;
+}
+
 export interface AppData {
   transactions: Transaction[];
   budgets: Budgets;
@@ -191,6 +227,8 @@ export interface AppData {
   /** Starting balance per money source. */
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;
+  /** Recurring transaction schedule (Transaksi Rutin on Perencanaan). */
+  recurring: RecurringTx[];
   /** Last time settings (budgets/openingBalances/creditCard) were edited. */
   settingsUpdatedAt: number;
 }

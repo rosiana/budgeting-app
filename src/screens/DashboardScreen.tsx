@@ -37,13 +37,14 @@ import {
   formatMonth,
   maybeMask,
 } from '../utils/format';
+import { isUnpaidThisPeriod } from '../utils/recurring';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { transactions, budgets, disabledBudgets, creditCard, openingBalances, privacyMode, setPrivacyMode } = useBudget();
+  const { transactions, budgets, disabledBudgets, creditCard, openingBalances, recurring, privacyMode, setPrivacyMode } = useBudget();
   const money = (n: number) => maybeMask(formatCurrency(n), privacyMode);
 
   const totalSaldo = useMemo(
@@ -75,6 +76,10 @@ export default function DashboardScreen() {
   const byWho = useMemo(() => spendByWho(monthTx, creditCard), [monthTx, creditCard]);
   const income = useMemo(() => totalIncome(monthTx), [monthTx]);
   const cc = useMemo(() => creditCardStatus(transactions, creditCard), [transactions, creditCard]);
+  const unpaidRutinCount = useMemo(
+    () => recurring.filter((r) => isUnpaidThisPeriod(r)).length,
+    [recurring]
+  );
   const remaining = totalBudget - budgetSpent;
   // Donut breakdown uses ALL real spending (every spent category, not just
   // budgeted ones) so the % math is meaningful.
@@ -191,6 +196,38 @@ export default function DashboardScreen() {
             </Text>
           </Card>
         </View>
+
+        {/* Transaksi Rutin summary — sits above the CC card. Shows how many
+         *  rec txs still need to be paid this period; "Dibayar semua ✓" when
+         *  the queue is clear. Tap → Perencanaan → Transaksi Rutin tab. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('Tabs', { screen: 'Budgets' } as any)}
+          style={[styles.rutinCard, unpaidRutinCount === 0 && styles.rutinCardAllPaid]}
+        >
+          <View style={[styles.rutinIcon, unpaidRutinCount === 0 && { backgroundColor: colors.success }]}>
+            <Ionicons
+              name={unpaidRutinCount === 0 ? 'checkmark' : 'refresh'}
+              size={20}
+              color={colors.white}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rutinLabel}>Transaksi Rutin</Text>
+            <Text style={styles.rutinSub}>
+              {recurring.length === 0
+                ? 'Belum ada — tambah di Perencanaan'
+                : unpaidRutinCount === 0
+                  ? 'Dibayar semua bulan ini ✓'
+                  : `${unpaidRutinCount} belum dibayar bulan ini`}
+            </Text>
+          </View>
+          {unpaidRutinCount > 0 ? (
+            <View style={styles.rutinBadge}>
+              <Text style={styles.rutinBadgeText}>{unpaidRutinCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
 
         {/* Credit card bill */}
         {cc.outstanding > 0 ? (
@@ -369,6 +406,32 @@ const styles = StyleSheet.create({
   cashflowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cashflowLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
   cashflowValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
+  rutinCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  rutinCardAllPaid: { backgroundColor: colors.success + '11', borderColor: colors.success + '33' },
+  rutinIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.warning,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rutinLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+  rutinSub: { fontSize: 12, color: colors.textMuted, marginTop: 1, fontWeight: '600' },
+  rutinBadge: {
+    backgroundColor: colors.warning,
+    minWidth: 26, height: 26, borderRadius: 13,
+    paddingHorizontal: 8,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rutinBadgeText: { fontSize: 13, fontWeight: '800', color: colors.white },
   ccCard: {
     flexDirection: 'row',
     alignItems: 'center',

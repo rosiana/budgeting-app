@@ -62,7 +62,7 @@ function Tabs() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Ringkasan' }} />
       <Tab.Screen name="Transactions" component={TransactionsScreen} options={{ title: 'Transaksi' }} />
-      <Tab.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Anggaran' }} />
+      <Tab.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Perencanaan' }} />
       <Tab.Screen name="Saldo" component={BalancesScreen} options={{ title: 'Saldo' }} />
     </Tab.Navigator>
   );

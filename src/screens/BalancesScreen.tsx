@@ -434,7 +434,7 @@ export default function BalancesScreen() {
          *  The primary action stays visible: Simpan Data Sekarang pushes the
          *  current data to the sheet. Ambil Data (pull) sits inside the
          *  accordion since it's a "new device" step, not day-to-day. */}
-        <SectionTitle>Sinkronisasi Google Sheet</SectionTitle>
+        <SectionTitle>Sinkronisasi Data</SectionTitle>
         <Card style={{ marginTop: 0 }}>
           <Text style={styles.settingHint}>
             Setelah URL + token diisi, MoMoney akan otomatis sinkron
@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
   ccOutstanding: { fontSize: 26, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
   ccDue: { fontSize: 13, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
   reimCard: {},
-  reimTotal: { fontSize: 16, fontWeight: '800', color: colors.accent },
+  reimTotal: { fontSize: 16, fontWeight: '800', color: colors.text },
   reimRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -63,7 +63,7 @@ export default function AddTransactionScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
   const insets = useSafeAreaInsets();
-  const { transactions, addTransaction, updateTransaction, deleteTransaction } = useBudget();
+  const { transactions, addTransaction, updateTransaction, deleteTransaction, markRecurringPaidNow } = useBudget();
   const money = useMoney();
 
   const draft = route.params?.draft;
@@ -377,6 +377,10 @@ export default function AddTransactionScreen() {
     } else {
       addTransaction(base);
     }
+    // If this transaction was created via Bayar on a Transaksi Rutin row,
+    // stamp the rec tx as paid for the current period so the Dashboard
+    // "belum dibayar" count drops and the notification skips this period.
+    if (draft?.recurringId) markRecurringPaidNow(draft.recurringId);
     navigation.popToTop();
   };
 

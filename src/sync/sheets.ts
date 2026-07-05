@@ -1,6 +1,7 @@
 import {
   Budgets,
   CreditCardConfig,
+  RecurringTx,
   SourceId,
   Transaction,
 } from '../types';
@@ -18,6 +19,7 @@ export interface SyncData {
   disabledBudgets?: import('../types').CategoryId[];
   openingBalances: Partial<Record<SourceId, number>>;
   creditCard: CreditCardConfig;
+  recurring?: RecurringTx[];
   settingsUpdatedAt: number;
 }
 

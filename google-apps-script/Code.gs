@@ -29,6 +29,7 @@ var TOKEN = 'GANTI_DENGAN_TOKEN_RAHASIA';
 
 var TX_SHEET = 'Transaksi';
 var SETTINGS_SHEET = 'Pengaturan';
+var RECURRING_SHEET = 'TransaksiRutin';
 var TX_HEADERS = [
   'id', 'type', 'date', 'merchant', 'amount', 'category', 'incomeCategory',
   'who', 'source', 'creditCard', 'reimbursable', 'reimbursed', 'note', 'items',
@@ -38,6 +39,11 @@ var TX_HEADERS = [
   // ahead of its natural due date (Bayar Tagihan on the Saldo screen);
   // refundOf links a refund income row back to the original expense.
   'transferGroup', 'ccPaidAt', 'refundOf',
+];
+var REC_HEADERS = [
+  'id', 'enabled', 'name', 'txType', 'category', 'incomeCategory', 'amount',
+  'who', 'source', 'creditCard', 'reimbursable', 'dayOfMonth', 'intervalMonths',
+  'anchorMonth', 'lastPaidPeriod', 'deleted', 'updatedAt',
 ];
 
 // --- Entry points ---------------------------------------------------------
@@ -92,8 +98,43 @@ function readAll() {
     budgets: readSettingsSection('budget'),
     openingBalances: readSettingsSection('opening'),
     creditCard: readCreditCard(),
+    recurring: readRecurring(),
     settingsUpdatedAt: readSettingsTimestamp(),
   };
+}
+
+function readRecurring() {
+  var sh = sheet(RECURRING_SHEET);
+  var values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+  var headers = values[0];
+  var out = [];
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    if (!row[0]) continue;
+    var t = {};
+    for (var c = 0; c < headers.length; c++) t[headers[c]] = row[c];
+    out.push({
+      id: String(t.id),
+      enabled: boolish(t.enabled),
+      name: String(t.name || ''),
+      txType: t.txType || 'expense',
+      category: t.category || 'lainnya',
+      incomeCategory: t.incomeCategory || undefined,
+      amount: t.amount ? Number(t.amount) : undefined,
+      who: t.who || 'rumah',
+      source: t.source || undefined,
+      creditCard: boolish(t.creditCard) || undefined,
+      reimbursable: boolish(t.reimbursable) || undefined,
+      dayOfMonth: Number(t.dayOfMonth) || 1,
+      intervalMonths: Number(t.intervalMonths) === 3 ? 3 : 1,
+      anchorMonth: t.anchorMonth ? Number(t.anchorMonth) : undefined,
+      lastPaidPeriod: t.lastPaidPeriod || undefined,
+      deleted: boolish(t.deleted) || undefined,
+      updatedAt: Number(t.updatedAt) || 0,
+    });
+  }
+  return out;
 }
 
 function readTransactions() {
@@ -228,14 +269,28 @@ function mergeAndWrite(incoming) {
     };
   }
 
+  // 3) Merge recurring transactions by id (same LWW rule as transactions).
+  var recById = {};
+  (existing.recurring || []).forEach(function (r) { recById[r.id] = r; });
+  (incoming.recurring || []).forEach(function (r) {
+    if (!r || !r.id) return;
+    var ex = recById[r.id];
+    if (!ex || Number(r.updatedAt || 0) >= Number(ex.updatedAt || 0)) {
+      recById[r.id] = r;
+    }
+  });
+  var mergedRec = Object.keys(recById).map(function (k) { return recById[k]; });
+
   writeTransactions(mergedTx);
   writeSettings(settings);
+  writeRecurring(mergedRec);
 
   return {
     transactions: mergedTx,
     budgets: settings.budgets,
     openingBalances: settings.openingBalances,
     creditCard: settings.creditCard,
+    recurring: mergedRec,
     settingsUpdatedAt: settings.settingsUpdatedAt,
   };
 }
@@ -279,4 +334,23 @@ function writeSettings(s) {
   Object.keys(cc).forEach(function (k) { rows.push(['cc', k, cc[k]]); });
   rows.push(['meta', 'settingsUpdatedAt', s.settingsUpdatedAt || 0]);
   sh.getRange(1, 1, rows.length, 3).setValues(rows);
+}
+
+function writeRecurring(recurring) {
+  var sh = sheet(RECURRING_SHEET);
+  sh.clearContents();
+  sh.getRange(1, 1, 1, REC_HEADERS.length).setValues([REC_HEADERS]);
+  if (!recurring.length) return;
+  var rows = recurring.map(function (r) {
+    return [
+      r.id, r.enabled ? true : false, r.name || '', r.txType || 'expense',
+      r.category || 'lainnya', r.incomeCategory || '',
+      r.amount || '', r.who || 'rumah', r.source || '',
+      r.creditCard ? true : false, r.reimbursable ? true : false,
+      r.dayOfMonth || 1, r.intervalMonths || 1,
+      r.anchorMonth || '', r.lastPaidPeriod || '',
+      r.deleted ? true : false, r.updatedAt || 0,
+    ];
+  });
+  sh.getRange(2, 1, rows.length, REC_HEADERS.length).setValues(rows);
 }

@@ -94,5 +94,6 @@ export const SEED_DATA: AppData = {
   openingBalances: DEFAULT_OPENING_BALANCES,
   disabledBudgets: [],
   creditCard: DEFAULT_CREDIT_CARD,
+  recurring: [],
   settingsUpdatedAt: Date.now(),
 };

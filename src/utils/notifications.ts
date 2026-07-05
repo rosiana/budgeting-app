@@ -1,5 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { RecurringTx } from '../types';
+import { isUnpaidThisPeriod, nextActivePeriodDate } from './recurring';
 
 /**
  * Recurring local-notification setup for MoMoney:
@@ -23,7 +25,8 @@ Notifications.setNotificationHandler({
 });
 
 export async function ensureNotificationsScheduled(
-  person: 'rosi' | 'rizal'
+  person: 'rosi' | 'rizal',
+  recurring: RecurringTx[] = []
 ): Promise<void> {
   try {
     const settings = await Notifications.getPermissionsAsync();
@@ -85,6 +88,41 @@ export async function ensureNotificationsScheduled(
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: ref,
+        } as any,
+      });
+    }
+
+    // Transaksi Rutin — one-shot notification per enabled rec tx at 09:00
+    // on the next due date. Only if the PIC (rec.who) matches this device.
+    // Rescheduled on every app launch (and every state change via the effect
+    // in BudgetProvider), so paying one drops its next firing correctly.
+    // iOS caps scheduled notifications at 64, so we intentionally schedule
+    // only the SINGLE NEXT firing per rec tx — leaves headroom for the
+    // built-in daily / month-end / Rizal-26 reminders.
+    for (const r of recurring) {
+      if (!r.enabled || r.deleted) continue;
+      if (r.who !== 'rumah' && r.who !== person) continue;
+      // Skip if it's already been paid for this period.
+      if (!isUnpaidThisPeriod(r)) continue;
+      const target = nextActivePeriodDate(r);
+      // If today past 09:00 on the due day AND still unpaid, fire in 1 min
+      // so the user gets a nudge instead of waiting a full period.
+      const now = new Date();
+      const trigger = target.getTime() > now.getTime()
+        ? target
+        : new Date(now.getTime() + 60 * 1000);
+      await Notifications.scheduleNotificationAsync({
+        identifier: `momoney-rec-${r.id}`,
+        content: {
+          title: `Transaksi Rutin: ${r.name}`,
+          body: r.amount
+            ? `Rp ${r.amount.toLocaleString('id-ID')} · tap untuk bayar sekarang`
+            : 'Tap untuk bayar sekarang',
+          data: { kind: 'recurring', recurringId: r.id },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: trigger,
         } as any,
       });
     }

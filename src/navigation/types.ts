@@ -43,6 +43,9 @@ export interface TransactionDraft {
    *  the Saldo Menunggu Refund queue so the "Refund" button lands the user
    *  directly on the modal instead of the edit form. */
   openRefund?: boolean;
+  /** When Bayar is tapped on a Transaksi Rutin row, the form carries this
+   *  id so on Simpan we mark the rec tx paid for the current period. */
+  recurringId?: string;
 }
 
 export type RootStackParamList = {
