@@ -636,9 +636,10 @@ export default function TransactionsScreen() {
         reimbursable: tx.reimbursable,
         reimbursed: tx.reimbursed,
         note: tx.note,
-        items: tx.items,
+        items: tx.items as LineItem[] | undefined,
         image: tx.image,
         scanned: tx.scanned,
+        refundOf: tx.refundOf,
       },
     });
   };
@@ -1166,9 +1167,9 @@ function TxRow({
             ) : null}
             {tx.reimbursable ? (
               <View style={[styles.ccBadge, tx.reimbursed && { backgroundColor: colors.success + '22' }]}>
-                <Ionicons name="repeat" size={10} color={tx.reimbursed ? colors.success : colors.accent} />
+                <Ionicons name="arrow-undo" size={10} color={tx.reimbursed ? colors.success : colors.accent} />
                 <Text style={[styles.ccBadgeText, { color: tx.reimbursed ? colors.success : colors.accent }]}>
-                  {tx.reimbursed ? 'Diganti' : 'Reimburse'}
+                  {tx.reimbursed ? 'Direfund' : 'Akan direfund'}
                 </Text>
               </View>
             ) : null}

@@ -367,6 +367,10 @@ export default function AddTransactionScreen() {
       items: useItems ? cleanedItems : undefined,
       image: image || undefined,
       scanned: draft?.scanned,
+      // Preserve the refund link when editing a refund row so it stays
+      // attached to the original expense (otherwise the badge on the
+      // original disappears and Anggaran math breaks).
+      refundOf: draft?.refundOf,
     };
     if (isEdit && draft?.id) {
       updateTransaction({ ...base, id: draft.id, createdAt: Date.now() });
@@ -484,6 +488,14 @@ export default function AddTransactionScreen() {
     setRefundOpen(false);
     navigation.popToTop();
   };
+
+  // Saldo's Menunggu Refund button navigates here with `openRefund: true`
+  // so the modal shows immediately, no intermediate edit-form tap.
+  React.useEffect(() => {
+    if (draft?.openRefund && draft?.id) openRefundModal();
+    // Only on initial mount for this draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <KeyboardAvoidingView
@@ -759,11 +771,11 @@ export default function AddTransactionScreen() {
             onPress={() => setReimbursable((v) => !v)}
             style={[styles.ccRow, reimbursable && styles.ccRowOn]}
           >
-            <Ionicons name="repeat" size={18} color={reimbursable ? colors.primary : colors.textMuted} />
+            <Ionicons name="arrow-undo" size={18} color={reimbursable ? colors.primary : colors.textMuted} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.ccTitle, reimbursable && { color: colors.primary }]}>Bisa direimburse</Text>
+              <Text style={[styles.ccTitle, reimbursable && { color: colors.primary }]}>Akan direfund</Text>
               <Text style={styles.ccSub}>
-                Diganti perusahaan — tidak masuk anggaran. Tandai lunas di tab Saldo.
+                Tidak masuk anggaran. Klik Refund di Saldo saat uangnya sudah balik.
               </Text>
             </View>
             <View style={[styles.switchTrack, reimbursable && styles.switchTrackOn]}>
@@ -1214,6 +1226,35 @@ export default function AddTransactionScreen() {
                 <Text style={styles.dateText}>{formatDateLong(refundDate)}</Text>
                 <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
               </TouchableOpacity>
+              {/* Inline date picker for the refund date. Nested Modals get
+               *  finicky on iOS (native presentation stack fights itself),
+               *  so we render the picker in the modal's own scroll body
+               *  instead. iOS shows an inline spinner; Android shows the
+               *  native dialog which pops over cleanly. */}
+              {refundShowDate && Platform.OS === 'ios' ? (
+                <View style={styles.refundInlineDate}>
+                  <DateTimePicker
+                    value={new Date(`${refundDate}T00:00:00`)}
+                    mode="date"
+                    display="inline"
+                    onChange={(_, d) => {
+                      if (d) setRefundDate(toISODate(d));
+                      setRefundShowDate(false);
+                    }}
+                  />
+                </View>
+              ) : null}
+              {refundShowDate && Platform.OS === 'android' ? (
+                <DateTimePicker
+                  value={new Date(`${refundDate}T00:00:00`)}
+                  mode="date"
+                  display="default"
+                  onChange={(e, d) => {
+                    setRefundShowDate(false);
+                    if (e.type !== 'dismissed' && d) setRefundDate(toISODate(d));
+                  }}
+                />
+              ) : null}
 
               <Text style={styles.label}>Uangnya masuk ke</Text>
               <View style={styles.chipWrap}>
@@ -1257,41 +1298,6 @@ export default function AddTransactionScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
-      {/* Date picker for the refund modal — separate instance so it doesn't
-       *  clash with the main form's date state. */}
-      {refundShowDate && Platform.OS === 'android' ? (
-        <DateTimePicker
-          value={new Date(`${refundDate}T00:00:00`)}
-          mode="date"
-          display="default"
-          onChange={(e, d) => {
-            setRefundShowDate(false);
-            if (e.type !== 'dismissed' && d) setRefundDate(toISODate(d));
-          }}
-        />
-      ) : null}
-      {refundShowDate && Platform.OS === 'ios' ? (
-        <Modal transparent animationType="fade" onRequestClose={() => setRefundShowDate(false)}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setRefundShowDate(false)}
-            style={styles.dateBackdrop}
-          >
-            <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.dateSheet}>
-              <DateTimePicker
-                value={new Date(`${refundDate}T00:00:00`)}
-                mode="date"
-                display="inline"
-                onChange={(_, d) => {
-                  if (d) setRefundDate(toISODate(d));
-                  setRefundShowDate(false);
-                }}
-              />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -1574,6 +1580,12 @@ const styles = StyleSheet.create({
   },
   refundItemDesc: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
   refundItemAmt: { fontSize: 13, fontWeight: '700', color: colors.text },
+  refundInlineDate: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: 6,
+  },
   stickyActions: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,

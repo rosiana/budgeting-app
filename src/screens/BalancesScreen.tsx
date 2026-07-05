@@ -257,7 +257,7 @@ export default function BalancesScreen() {
             <View style={styles.ccHead}>
               <View style={styles.ccTitleRow}>
                 <Ionicons name="repeat" size={18} color={colors.accent} />
-                <Text style={styles.ccTitle}>Menunggu Reimburse</Text>
+                <Text style={styles.ccTitle}>Menunggu Refund</Text>
               </View>
               <Text style={styles.reimTotal}>{money(pendingTotal)}</Text>
             </View>
@@ -289,6 +289,9 @@ export default function BalancesScreen() {
                         items: t.items,
                         image: t.image,
                         scanned: t.scanned,
+                        // Skip the edit form and land straight in the
+                        // Refund modal pre-filled with this row.
+                        openRefund: true,
                       },
                     })
                   }
@@ -476,6 +479,10 @@ export default function BalancesScreen() {
             disabled={syncStatus === 'syncing' || !url}
           />
 
+          {/* Extra breathing room above the "Pengaturan Akun Baru" divider so
+           *  the gap matches the CC card's Dibayar dari BCA → Pengaturan
+           *  Tanggal spacing (which had a marginBottom on the row above). */}
+          <View style={{ height: spacing.md }} />
           <TouchableOpacity
             onPress={() => setShowSyncSettings((v) => !v)}
             activeOpacity={0.7}

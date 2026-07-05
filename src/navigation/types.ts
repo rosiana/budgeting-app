@@ -36,6 +36,13 @@ export interface TransactionDraft {
     amountOut: number;
     amountIn: number;
   };
+  /** When editing an existing refund row, this preserves the link back to
+   *  the original expense so the edit doesn't orphan it. */
+  refundOf?: string;
+  /** When true, the edit view auto-opens the Refund modal on mount. Used by
+   *  the Saldo Menunggu Refund queue so the "Refund" button lands the user
+   *  directly on the modal instead of the edit form. */
+  openRefund?: boolean;
 }
 
 export type RootStackParamList = {
